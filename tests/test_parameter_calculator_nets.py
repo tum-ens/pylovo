@@ -1,4 +1,4 @@
-"""``ParameterCalculator`` and ``compute_clustering_metrics`` on in-memory pandapower nets built like pylovo builds them
+"""The net metrics, ``key_figures`` and ``ParameterCalculator`` on in-memory pandapower nets built like pylovo builds them
 (real offline ``PandapowerBackend``, fake database client; no database).
 
 Net: LVbus 1 -f0 (100 m)- Connection Nodebus 10, which feeds 11 (f1, 50 m) and 12 (f2, 60 m); each of those has two
@@ -14,9 +14,9 @@ import pandapower as pp
 import pandapower.topology as top
 import pytest
 
-from pylovo.analysis import grid_analysis, parameter_calculation
-from pylovo.analysis.grid_analysis import compute_clustering_metrics
-from pylovo.analysis.parameter_calculation import ParameterCalculator, station_mva
+from pylovo.analysis import grid_analysis, impedance_metrics, net_metrics
+from pylovo.analysis.net_metrics import station_mva
+from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo.database.analysis_mixin import AnalysisMixin
 from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec, create_backend
 
@@ -24,7 +24,7 @@ LOGGER = logging.getLogger("parameter-calculator-test")
 CABLES = [("NAYY_4_150", 0.206, 0.080, 0.275, 20.0), ("NAYY_4_240", 0.125, 0.078, 0.357, 30.0)]
 LON, LAT = 11.5, 48.1
 R, X = 0.206, 0.080
-SIM_FACTOR = parameter_calculation.SIM_FACTOR["Residential"]
+SIM_FACTOR = net_metrics.SIM_FACTOR["Residential"]
 
 
 def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0, f2_at_busbar=False, busbar=(), street=True,
@@ -86,7 +86,6 @@ class Database:
 def calculator(data=None, plz=1):
     pc = object.__new__(ParameterCalculator)
     pc.dbc, pc.version_id, pc.plz, pc.kcid, pc.bcid = Database(data), "1", plz, 1, 1
-    pc.lvbus_keyword, pc.consumer_bus_keyword, pc.connection_bus_keyword = "LVbus", "Consumer Nodebus", "Connection Nodebus"
     return pc
 
 
@@ -103,7 +102,7 @@ def haversine_km(a, b):
 
 def test_clustering_metrics_of_a_pylovo_grid():
     net = build()
-    metrics = compute_clustering_metrics(calculator(), net)
+    metrics = grid_analysis.key_figures(net)
 
     peak = grid_analysis.PEAK_LOAD_HOUSEHOLD
     assert (metrics["no_connection_buses"], metrics["no_house_connections"], metrics["no_households"]) == (3, 4, 4)
@@ -123,7 +122,7 @@ def test_clustering_metrics_of_a_pylovo_grid():
 
 def key_figures(**options):
     """Key figures of ``build(**options)``."""
-    return compute_clustering_metrics(calculator(), build(**options))
+    return grid_analysis.key_figures(build(**options))
 
 
 @pytest.mark.parametrize("options, branches, behind, ends", [
@@ -172,11 +171,10 @@ def test_the_largest_branch_is_one_of_the_same_feeders():
 
 
 def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distance():
-    pc = calculator()
     pair = pp.create_empty_network()
     for lon in (LON, LON + 0.001):                                                   # two consumers 74 m apart
         pp.create_load(pair, pp.create_bus(pair, 0.4, geodata=(lon, LAT)), 0.01)
-    assert pc.calculate_average_house_distance(pair) == pytest.approx(haversine_km((LON, LAT), (LON + 0.001, LAT)), rel=1e-4)
+    assert net_metrics.average_house_distance(pair) == pytest.approx(haversine_km((LON, LAT), (LON + 0.001, LAT)), rel=1e-4)
 
     # the documented statistic: median over the consumers of the mean distance to the nearest (up to four) consumers;
     # the station, MV and connection buses do not count
@@ -185,35 +183,33 @@ def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distan
     points = [tuple(json.loads(geo)["coordinates"]) for geo in consumers["geo"]]
     means = [sum(sorted(haversine_km(point, other) for j, other in enumerate(points) if j != i)[:3]) / 3
              for i, point in enumerate(points)]
-    assert pc.calculate_average_house_distance(net) == pytest.approx(float(np.median(means)), rel=1e-4)
+    assert net_metrics.average_house_distance(net) == pytest.approx(float(np.median(means)), rel=1e-4)
 
 
 def test_the_house_distance_of_projected_coordinates_is_in_km_and_needs_two_consumers():
-    pc = calculator()
     net = pp.create_empty_network()
-    assert math.isnan(pc.calculate_average_house_distance(net))                      # no bus: undefined
+    assert math.isnan(net_metrics.average_house_distance(net))                      # no bus: undefined
     pp.create_load(net, pp.create_bus(net, 0.4, geodata=(500000.0, 5300000.0)), 0.01)
     pp.create_bus(net, 0.4, geodata=(500100.0, 5300000.0))                          # no consumer: not counted
-    assert math.isnan(pc.calculate_average_house_distance(net))                      # one consumer: undefined
+    assert math.isnan(net_metrics.average_house_distance(net))                      # one consumer: undefined
     pp.create_load(net, pp.create_bus(net, 0.4, geodata=(500300.0, 5300000.0)), 0.01)
-    assert pc.calculate_average_house_distance(net) == pytest.approx(0.3)            # 300 m
+    assert net_metrics.average_house_distance(net) == pytest.approx(0.3)            # 300 m
 
 
 def test_the_households_are_the_load_units_of_the_residential_loads():
-    net, pc = build(), calculator()
+    net = build()
     net.load.loc[net.load.index[0], "load_units"] = 6.0                              # a building with six flats
     pp.create_load(net, net.load.at[net.load.index[1], "bus"], 0.005, max_p_mw=0.02, category="Commercial",
                    load_units=1.0)                                                   # a shop in a house: no household
-    assert pc.count_households(net) == 6 + 3
-    assert compute_clustering_metrics(pc, net)["no_households"] == 9
+    assert net_metrics.count_households(net) == 6 + 3
+    assert grid_analysis.key_figures(net)["no_households"] == 9
     net.load.drop(columns="load_units", inplace=True)                               # nets without the column
-    assert pc.count_households(net) == 4
+    assert net_metrics.count_households(net) == 4
 
 
 @pytest.mark.parametrize("parallel", [1, 2])
 def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simultaneity(parallel):
     net = build(parallel_feeder=parallel)
-    pc = calculator()
     cables = {"f0": parallel, "f1": parallel}                                       # parallel cables divide R and X
     households = 68.0 / grid_analysis.PEAK_LOAD_HOUSEHOLD
     weight = 17.0 / grid_analysis.PEAK_LOAD_HOUSEHOLD                                # household equivalents per consumer
@@ -226,7 +222,7 @@ def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simult
     reactance = sum(weight * (sum(length[c] * X / cables.get(c, 1) * factor[c] for c in feeders) + length[s] * X * factor["s"])
                     for s, feeders in paths.items())
 
-    max_branch, total_r, total_x, ratio, max_branch_r, branch_r = pc.calculate_impedance_metrics(
+    max_branch, total_r, total_x, ratio, max_branch_r, branch_r = impedance_metrics.impedance_metrics(
         net, top.create_nxgraph(net, respect_switches=True))
 
     assert (total_r, total_x) == (pytest.approx(resistance), pytest.approx(reactance))
@@ -236,40 +232,39 @@ def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simult
 
 
 def test_the_ratio_lies_within_the_r_x_of_the_lines():
-    net, pc = build(), calculator()
+    net = build()
     net.line.loc[net.line["name"] == "f2", ["r_ohm_per_km", "x_ohm_per_km"]] = (0.125, 0.078)    # NAYY_4_240
-    ratio = pc.calculate_impedance_metrics(net, top.create_nxgraph(net, respect_switches=True))[3]
+    ratio = impedance_metrics.impedance_metrics(net, top.create_nxgraph(net, respect_switches=True))[3]
     assert 0.125 / 0.078 < ratio < R / X
 
 
 def test_the_cable_length_is_the_installed_length_with_parallel_cables():
-    assert calculator().calculate_cable_length(build(parallel_feeder=2)) == pytest.approx(0.256 + 0.1 + 0.05)
+    assert net_metrics.cable_length(build(parallel_feeder=2)) == pytest.approx(0.256 + 0.1 + 0.05)
 
 
 def test_the_cable_length_can_be_restricted_to_lines_in_service():
-    net, pc = build(), calculator()
+    net = build()
     net.line.loc[net.line["name"] == "f2", "in_service"] = False
-    assert pc.calculate_cable_length(net) == pytest.approx(0.256)
-    assert pc.calculate_cable_length(net, only_in_service=True) == pytest.approx(0.256 - 0.06)
+    assert net_metrics.cable_length(net) == pytest.approx(0.256)
+    assert net_metrics.cable_length(net, only_in_service=True) == pytest.approx(0.256 - 0.06)
 
 
 def test_the_station_rating_counts_the_parallel_units_and_a_net_without_transformer_is_an_error():
-    pc = calculator()
     assert station_mva(build(kva=400, parallel_trafo=2)) == pytest.approx(0.8)
-    assert pc.get_transformer_power(build(kva=630)) == pytest.approx(0.63)
+    assert net_metrics.transformer_power(build(kva=630)) == pytest.approx(0.63)
     net = build()
     net.trafo.drop(net.trafo.index, inplace=True)
     with pytest.raises(ValueError, match="No transformer found"):
-        pc.get_transformer_power(net)
+        net_metrics.transformer_power(net)
 
 
 # --- the coincident peak load of a grid ---------------------------------------------------------------------------------
 def test_the_coincident_peak_load_applies_the_simultaneity_per_category():
-    net, pc = build(), calculator()
-    assert pc.calculate_simultaneous_peak_load(net) == pytest.approx(coincident(4, 68.0))       # kW
+    net = build()
+    assert net_metrics.simultaneous_peak_load(net) == pytest.approx(coincident(4, 68.0))       # kW
     pp.create_load(net, net.load.at[net.load.index[0], "bus"], 0.005, max_p_mw=0.02, category="Commercial",
                    load_units=1.0)                                                   # one shop: its full 20 kW
-    assert pc.calculate_simultaneous_peak_load(net) == pytest.approx(coincident(4, 68.0) + 20.0)
+    assert net_metrics.simultaneous_peak_load(net) == pytest.approx(coincident(4, 68.0) + 20.0)
 
 
 # --- the per-transformer analysis of a PLZ, on nets stored as JSON and read back -----------------------------------------
@@ -333,17 +328,16 @@ def test_the_peak_load_of_a_grid_is_its_entry_in_the_per_transformer_lists():
 
     for position, (kcid, bcid) in enumerate(stored):
         reloaded = Client(stored).read_net_db(1, kcid, bcid)
-        peak = compute_clustering_metrics(calculator(), reloaded)["simultaneous_peak_load_mw"]
+        peak = grid_analysis.key_figures(reloaded)["simultaneous_peak_load_mw"]
         assert peak == pytest.approx(coincident(4, 4 * (17.0 + bcid)) / 1000)
         assert peak * 1000 == pytest.approx(inserted["loads"]["400"][position])
 
 
 def test_two_grids_with_equal_rating_and_distance_but_different_loads_get_their_own_peak_load():
     small, large = build(), build(load_kw=51.0)                                      # the same geometry, 3 x the load
-    inserted = analyse({(1, 1): small, (1, 2): large})
-    data = [{}, {}, inserted["loads"], inserted["max"], inserted["avg"]]
-
-    peak = compute_clustering_metrics(calculator(data), large)["simultaneous_peak_load_mw"]
+    # the key figures are computed from the net of a grid alone, so no other grid of the PLZ can be taken for it
+    assert grid_analysis.key_figures(small)["simultaneous_peak_load_mw"] == pytest.approx(coincident(4, 68.0) / 1000)
+    peak = grid_analysis.key_figures(large)["simultaneous_peak_load_mw"]
     assert peak == pytest.approx(coincident(4, 204.0) / 1000)
 
 

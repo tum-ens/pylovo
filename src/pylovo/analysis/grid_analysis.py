@@ -1,62 +1,60 @@
-"""Compose named LV grid parameter sets from the :class:`ParameterCalculator` toolbox.
+"""The key figures of one synthetic LV grid, composed from the figures of its pandapower net.
 
-- :func:`compute_clustering_metrics`: parameters stored per synthetic grid by ``pylovo-analyze``.
+- :func:`key_figures`: the figures stored per grid by ``pylovo-analyze`` (table ``clustering_parameters``), from
+  :mod:`pylovo.analysis.net_metrics` and :mod:`pylovo.analysis.impedance_metrics`.
 
 The structural metrics that compare grids of two datasets are in :mod:`pylovo.analysis.comparison`.
 """
 
 import math
-from typing import TYPE_CHECKING, Any, Dict
+from typing import Any, Dict
 
 import pandapower as pp
 
+from pylovo.analysis import impedance_metrics, net_metrics
 from pylovo.config_loader import PEAK_LOAD_HOUSEHOLD
 
-if TYPE_CHECKING:
-    from pylovo.analysis.parameter_calculation import ParameterCalculator
-
-#: Version of the definitions of :func:`compute_clustering_metrics`, stored with every row of ``clustering_parameters``
+#: Version of the definitions of :func:`key_figures`, stored with every row of ``clustering_parameters``
 #: and with the classifications clustered on them. Raise it when a definition changes: the per-grid analysis then
 #: computes stored rows again. 1: pylovo 1.0.0; 2: the feeders, branch ends and route resistance of the structural
 #: metrics, the reactance weighted like the resistance.
 KEY_FIGURES_VERSION = 2
 
 
-def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandapowerNet) -> Dict[str, Any]:
-    """Compute the clustering parameter set of one synthetic LV grid.
+def key_figures(net: pp.pandapowerNet) -> Dict[str, Any]:
+    """Compute the key figures of one synthetic LV grid from its net.
 
     ``simultaneous_peak_load_mw`` is the coincident peak load of the grid's own loads, with the
     formula of the PLZ-level transformer statistics
-    (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.calculate_simultaneous_peak_load`).
+    (:func:`~pylovo.analysis.net_metrics.simultaneous_peak_load`).
     A branch is a feeder of the structural metrics of the validation: a cable that leaves the station towards at
-    least two buildings (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.feeder_structure`).
+    least two buildings (:func:`~pylovo.analysis.net_metrics.feeder_structure`).
     ``no_branches``, the per-branch figures and the figures of the largest branch use these feeders and the buildings
     behind them; a grid without a feeder has 0 of each. ``no_branch_ends`` and ``max_route_resistance_ohm`` are the
     branch ends and the highest route resistance of the structural metrics.
 
     Args:
-        calculator: Calculator with the PLZ context of the grid.
         net: Synthetic pylovo grid.
 
     Returns:
         Dictionary with the columns of the ``clustering_parameters`` table (without ids).
     """
-    no_house_connections = calculator.count_buses_by_keyword(net, calculator.consumer_bus_keyword)
-    no_connection_buses = calculator.count_buses_by_keyword(net, calculator.connection_bus_keyword)
-    no_households = calculator.count_households(net)
-    max_power_mw = calculator.calculate_total_installed_power(net)
+    no_house_connections = net_metrics.count_buses_by_keyword(net, net_metrics.CONSUMER_BUS_KEYWORD)
+    no_connection_buses = net_metrics.count_buses_by_keyword(net, net_metrics.CONNECTION_BUS_KEYWORD)
+    no_households = net_metrics.count_households(net)
+    max_power_mw = net_metrics.total_installed_power(net)
 
     no_household_equ = max_power_mw * 1000.0 / PEAK_LOAD_HOUSEHOLD
-    cable_length_km = calculator.calculate_cable_length(net)
+    cable_length_km = net_metrics.cable_length(net)
     cable_len_per_house = cable_length_km / no_house_connections if no_house_connections > 0 else 0.0
 
     graph = pp.topology.create_nxgraph(net, respect_switches=True)
-    root_idx = calculator.resolve_synthetic_root_bus(net)
-    consumer_buses = calculator.resolve_consumer_buses(net, uses_synthetic_naming=True)
-    feeder_of_bus, no_branch_ends = calculator.feeder_structure(net, root_idx, consumer_buses)
+    root_idx = net_metrics.resolve_synthetic_root_bus(net)
+    consumer_buses = net_metrics.resolve_consumer_buses(net, uses_synthetic_naming=True)
+    feeder_of_bus, no_branch_ends = net_metrics.feeder_structure(net, root_idx, consumer_buses)
     no_branches = len(set(feeder_of_bus.values()))
-    max_route_resistance_ohm = calculator.calculate_max_route_resistance(net, root_idx, consumer_buses)
-    avg_trafo_dis, max_trafo_dis = calculator.calculate_trafo_distances_for_synthetic_grid(net, graph)
+    max_route_resistance_ohm = net_metrics.max_route_resistance(net, root_idx, consumer_buses)
+    avg_trafo_dis, max_trafo_dis = net_metrics.transformer_distances(net, graph)
 
     if no_branches > 0:
         behind = net.load["bus"].isin(list(feeder_of_bus))
@@ -67,9 +65,9 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
         no_house_connections_per_branch = 0.0
         no_household_equ_per_branch = 0.0
 
-    transformer_mva = calculator.get_transformer_power(net)
-    house_distance_km = calculator.calculate_average_house_distance(net)
-    simultaneous_peak_load_mw = calculator.calculate_simultaneous_peak_load(net) / 1000.0
+    transformer_mva = net_metrics.transformer_power(net)
+    house_distance_km = net_metrics.average_house_distance(net)
+    simultaneous_peak_load_mw = net_metrics.simultaneous_peak_load(net) / 1000.0
 
     (
         max_household_equ_of_a_branch,
@@ -78,7 +76,7 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
         ratio,
         max_vsw_of_a_branch,
         feeder_resistance,
-    ) = calculator.calculate_impedance_metrics(net, graph, feeder_of_bus)
+    ) = impedance_metrics.impedance_metrics(net, graph, feeder_of_bus)
 
     vsw_per_branch = feeder_resistance / no_branches if no_branches > 0 else 0.0
 

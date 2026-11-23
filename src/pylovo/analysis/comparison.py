@@ -136,7 +136,7 @@ def feeder_structure(order: Sequence, parent: Mapping, link_km: Mapping, behind:
     towards at least two houses: a house at the busbar, or on its own cable from the station, belongs to no feeder.
     The branch ends are the shared nodes from which no shared node continues, the root excluded. Used for measured
     and synthetic cables (:func:`grid_metrics`) and for pandapower nets
-    (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.feeder_structure`).
+    (:func:`pylovo.analysis.net_metrics.feeder_structure`).
 
     Args:
         order: The nodes in breadth-first order from the root (``order[0]``).

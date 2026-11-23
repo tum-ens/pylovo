@@ -16,7 +16,9 @@ Entry points for most tasks:
 * :class:`pylovo.cable_installer.CableInstaller` -- construction and sizing of one grid.
 * :mod:`pylovo.config_loader` -- all configuration values.
 * :mod:`pylovo.electrical_backend` -- backend interface and component specifications.
-* :class:`pylovo.analysis.parameter_calculation.ParameterCalculator` -- key figures.
+* :class:`pylovo.analysis.parameter_calculation.ParameterCalculator` -- compute and store the key figures of the
+  stored grids; :mod:`pylovo.analysis.net_metrics` and :func:`pylovo.analysis.grid_analysis.key_figures` compute
+  them from one pandapower net, without the database.
 * :func:`pylovo.mv_grid.stage.run_mv_stage` and :class:`pylovo.mv_grid.parameters.MvParameters` -- the MV
   stage and its parameters.
 * :mod:`pylovo.load_editing` -- manual load edits of stored grids.

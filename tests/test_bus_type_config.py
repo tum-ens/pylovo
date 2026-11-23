@@ -3,7 +3,7 @@ the caller passes them."""
 
 import pandapower as pp
 
-from pylovo.analysis.parameter_calculation import GENERIC_BUS_TYPE_CONFIG, classify_bus_types
+from pylovo.analysis.net_metrics import GENERIC_BUS_TYPE_CONFIG, classify_bus_types
 
 #: The name patterns of an invented export: service buses, cable distribution cabinets and service cables.
 EXPORT_CONFIG = {"name_column": "name", "house_connection_pattern": r"^Service", "kvs_pattern": r"^Cabinet",
