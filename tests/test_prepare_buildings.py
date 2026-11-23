@@ -1,11 +1,12 @@
-"""Order and fallbacks of GridGenerator.prepare_buildings (no database)."""
+"""Order and fallbacks of InputPreparation.prepare_buildings (no database)."""
 
 import logging
 
 import pytest
 
-from pylovo import grid_generator
-from pylovo.grid_generator import GridGenerator
+from pylovo.lv_grid import preparation
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.preparation import InputPreparation
 
 
 class Db:
@@ -24,12 +25,11 @@ class Db:
 
 
 def prepared(monkeypatch, raises=()):
-    monkeypatch.setattr(grid_generator, "RESIDENTIAL_ONLY_GENERATION", False)
-    gg = GridGenerator.__new__(GridGenerator)
-    gg.plz, gg.dbc, gg.logger = 80331, Db(raises), logging.getLogger("prepare-test")
-    gg.inf_dbc = gg.dbc                                      # the InfDB reads are recorded with the rest
-    gg.prepare_buildings()
-    return gg.dbc.calls
+    monkeypatch.setattr(preparation, "RESIDENTIAL_ONLY_GENERATION", False)
+    db = Db(raises)                                          # the InfDB reads are recorded with the rest
+    InputPreparation(GenerationContext(plz=80331, dbc=db, logger=logging.getLogger("prepare-test"),
+                                       inf_dbc=db)).prepare_buildings()
+    return db.calls
 
 
 @pytest.mark.parametrize("missing", ["calculate_avg_households_per_building", "calculate_house_distance_metric"])

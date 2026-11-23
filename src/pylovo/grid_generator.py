@@ -17,7 +17,6 @@ temporary tables and finally copies the results into the ``*_result`` tables:
 
 import math
 import traceback
-import warnings
 from collections import deque
 from enum import StrEnum
 from pathlib import Path
@@ -26,23 +25,17 @@ import numpy as np
 import pandas as pd  # type: ignore
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
-from sklearn.cluster import KMeans
 from concurrent.futures import ProcessPoolExecutor, as_completed  # lightweight parallel execution
 
 import pylovo.database.database_client as dbc
-from pylovo.infdb.infdb_client import InfdbClient, address_filter_warning
+from pylovo.infdb.infdb_client import InfdbClient
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo import supply_areas, utils
 from pylovo.config_loader import (
-    AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,
-    CONFIG_EQUIPMENT_DATA,
-    CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
-    CONNECTION_POINT_AGGREGATION_RADIUS_M,
     CONSUMER_CATEGORIES,
     CONSUMER_CONNECTION_CABLES,
     ELECTRICAL_BACKEND,
-    EXCLUDE_BUILDINGS_WITHOUT_ADDRESS,
     FEEDER_CABLES,
     GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS,
     GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
@@ -52,7 +45,6 @@ from pylovo.config_loader import (
     LOG_LEVEL,
     LV_REFERENCE_VOLTAGE_PU,
     MAX_BROWNFIELD_TRAFO_DISTANCE,
-    MAX_BUILDINGS_PER_KCID,
     MAX_GREENFIELD_TRAFO_DISTANCE,
     MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT,
     MAX_VOLTAGE_REPAIRS,
@@ -60,25 +52,19 @@ from pylovo.config_loader import (
     N_JOBS,
     POWER_FLOW_MAX_VM_PU,
     POWER_FLOW_MIN_VM_PU,
-    RESIDENTIAL_ONLY_GENERATION,
     RESULT_DIR,
-    RURAL_MAX_HOUSEHOLDS,
-    RURAL_MIN_BUILDING_DISTANCE,
     SAVE_GRID_FOLDER,
-    TARGET_EPSG,
-    URBAN_MAX_BUILDING_DISTANCE,
-    URBAN_MIN_HOUSEHOLDS,
-    USE_DSO_TRANSFORMER_POSITIONS,
-    USE_MANUAL_TRANSFORMER_POSITIONS,
-    USE_OPEN_TRANSFORMER_POSITIONS,
     VERSION_ID,
 )
 
 # Import electrical backend components
 from pylovo.electrical_backend import IElectricalBackend, create_backend
 from pylovo.cable_installer import CableInstaller
-from pylovo import feeder_planning, postcode_border
+from pylovo import feeder_planning
 from pylovo.station_voltage import validate_operating_point
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.preparation import InputPreparation
+from pylovo.lv_grid.street_clusters import StreetClustering
 
 class ResultExistsError(Exception):
     """Raised when the grids of a PLZ already exist for the current ``VERSION_ID``."""
@@ -370,6 +356,11 @@ class GridGenerator:
             if gg is not None:
                 gg.dbc.close()
 
+    def context(self) -> GenerationContext:
+        """The context of the postcode being generated, for the stages of :mod:`pylovo.lv_grid`."""
+        return GenerationContext(plz=self.plz, dbc=self.dbc, logger=self.logger,
+                                 consumer_categories=self.consumer_categories, inf_dbc=self.inf_dbc)
+
     def generate_grid(self):
         """Run all generation steps for ``self.plz`` inside the PLZ temporary tables.
 
@@ -381,267 +372,11 @@ class GridGenerator:
                 f"The grids for the postcode area {self.plz} is already generated "
                 f"for the version {VERSION_ID}."
             )
-        self.prepare_lod2_transformer_stations()
-        self.prepare_data_from_config()
-        self.prepare_postcodes()
-        self.prepare_buildings()
-        self.prepare_transformers()
-        self.prepare_ways()
-        self.apply_kmeans_clustering()
+        context = self.context()
+        InputPreparation(context).run()
+        StreetClustering(context).run()
         self.position_all_transformers()
         self.install_cables()
-
-    def prepare_lod2_transformer_stations(self):
-        """Add the LoD2 transformer-station buildings of the PLZ to the shared transformer candidates.
-
-        Only when open or manual positions are used: a run without them does not use the candidates. ``pylovo.transformers`` is shared by all PLZ, so the rows are written and
-        committed in a short transaction of their own before the PLZ is generated (the long PLZ
-        transaction would hold their row locks for minutes and could deadlock with a neighbouring PLZ).
-        """
-        if not (USE_OPEN_TRANSFORMER_POSITIONS or USE_MANUAL_TRANSFORMER_POSITIONS):
-            return
-        transformer_station_buildings = self.inf_dbc.fetch_transformer_station_buildings_from_infdb(self.plz)
-        transformer_candidate_count = self.dbc.upsert_lod2_transformer_stations(transformer_station_buildings)
-        self.dbc.commit_changes()
-        if transformer_candidate_count:
-            self.logger.info(
-                f"LoD2 transformer-station buildings added to transformer candidates: {transformer_candidate_count}"
-            )
-
-    def prepare_data_from_config(self):
-        """
-        Load data from config.
-        """
-        self.dbc.insert_equipment_data_from_config(equipment_data=CONFIG_EQUIPMENT_DATA)
-        self.dbc.commit_changes()
-        self.dbc.insert_consumer_categories_from_config(consumer_categories=CONSUMER_CATEGORIES)
-
-    def prepare_postcodes(self):
-        """
-        Caches postcode from raw data tables and stores in temporary tables.
-        FROM: postcode (local) or InfDB opendata.postcodes_germany
-        INTO: postcode_result
-
-        The local postcode table may be empty or stale for new PLZ
-        regions added after the initial pylovo-setup run.  To avoid requiring a full
-        re-run of setup, the postcode geometry is fetched on-demand from InfDB and
-        inserted into the local postcode table before copying to postcode_result.
-        """
-        if not self.dbc.postcode_exists_locally(self.plz):
-            postcode_row = self.inf_dbc.fetch_postcode_from_infdb(self.plz)
-            if postcode_row is None:
-                raise ValueError(
-                    f"PLZ {self.plz} not found in InfDB opendata.postcodes_germany. "
-                    "Cannot proceed without postcode geometry."
-                )
-            self.dbc.insert_postcode(postcode_row)
-            self.logger.info(f"Missing postcode for plz {self.plz} fetched from InfDB and inserted into local database.")
-        self.dbc.copy_postcode_result_table(self.plz)
-        self.logger.info(f"Starting grid generation for plz {self.plz}")
-
-    def prepare_buildings(self):
-        """
-        Caches buildings from raw data tables and stores in temporary tables.
-        FROM: the InfDB buildings
-        INTO: buildings_tem
-        """
-        warning = address_filter_warning(EXCLUDE_BUILDINGS_WITHOUT_ADDRESS, self.inf_dbc.has_auxiliary_class())
-        if warning:
-            self.logger.warning(warning)
-        buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
-        self.dbc.set_buildings_table(buildings_data)
-        if RESIDENTIAL_ONLY_GENERATION:
-            removed_non_residential = self.dbc.remove_non_residential_buildings_from_buildings_tem()
-            self.logger.info(
-                f"Residential-only generation enabled: removed {removed_non_residential} non-residential buildings"
-            )
-        self.logger.info("Buildings_tem table prepared")
-        self.dbc.remove_duplicate_buildings()
-        self.logger.info("Duplicate buildings removed from buildings_tem")
-
-        # Fill missing household counts before they contribute to the postcode's
-        # settlement classification, then calculate residential demand.
-        unloadcount = self.dbc.set_building_peak_load()
-        self.logger.info(
-            f"Building peakload calculated in buildings_tem, {unloadcount} unloaded buildings are removed from "
-            f"buildings_tem"
-        )
-
-        # The MV-direct decision comes before the removal of the non-residential buildings with a
-        # transformer candidate inside: such a building leaves the LV input either way, but a large one
-        # (a customer with its own substation) is stored as MV customer first. The removed buildings do
-        # not count in the settlement classification, as before.
-        too_large_consumers = self.dbc.update_too_large_consumers_to_zero()
-        self.logger.debug(
-            f"{too_large_consumers} non-residential components assumed MV-direct and excluded from LV modeling"
-        )
-        # the connection level of every building (CONNECTION_LEVEL_THRESHOLDS_KW), before the MV customers are stored
-        self.dbc.set_connection_levels()
-        if too_large_consumers:
-            saved = self.dbc.save_mv_customers(self.plz)
-            self.logger.info(f"{saved} MV customers stored in pylovo.mv_customers")
-        removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers(
-            include_dso=USE_DSO_TRANSFORMER_POSITIONS)
-        if removed_transformer_buildings:
-            self.logger.info(
-                f"Removed {removed_transformer_buildings} non-residential buildings overlapping transformer candidates"
-            )
-
-        # A metric that cannot be calculated (no residential building with households, fewer than two
-        # buildings) stays NULL and counts as rural, so every PLZ gets a settlement type.
-        avg_hh = house_dist = None
-        try:
-            avg_hh = self.dbc.calculate_avg_households_per_building(self.plz)
-        except ValueError as e:
-            self.logger.warning(f"{e} The household metric counts as rural.")
-        try:
-            house_dist = self.dbc.calculate_house_distance_metric(self.plz)
-        except ValueError as e:
-            self.logger.warning(f"{e} The distance metric counts as rural.")
-        settlement_type = self.dbc.set_settlement_type_per_plz(self.plz, settlement_type_thresholds=
-        {"rural_max_households": RURAL_MAX_HOUSEHOLDS,
-         "urban_min_households": URBAN_MIN_HOUSEHOLDS,
-         "rural_min_distance": RURAL_MIN_BUILDING_DISTANCE,
-         "urban_max_distance": URBAN_MAX_BUILDING_DISTANCE})
-        self.logger.info(
-            f"Settlement type determined (avg_households_per_building={None if avg_hh is None else round(avg_hh, 2)}, "
-            f"house_distance={None if house_dist is None else round(house_dist, 1)} m, settlement_type={settlement_type})"
-        )
-
-    def prepare_transformers(self):
-        """
-        Cache transformers from raw data tables and stores in temporary tables.
-        FROM: transformers
-        INTO: buildings_tem
-        """
-        self.dbc.set_buildings_tem_plz(self.plz)
-        sources = {"include_dso": USE_DSO_TRANSFORMER_POSITIONS, "include_open": USE_OPEN_TRANSFORMER_POSITIONS,
-                   "include_manual": USE_MANUAL_TRANSFORMER_POSITIONS}
-        if any(sources.values()):
-            self.dbc.insert_transformers(self.plz, **sources)
-            self.logger.info(
-                "Transformers inserted into buildings_tem table "
-                f"(dso={USE_DSO_TRANSFORMER_POSITIONS}, open={USE_OPEN_TRANSFORMER_POSITIONS}, "
-                f"manual={USE_MANUAL_TRANSFORMER_POSITIONS})"
-            )
-        else:
-            self.logger.info("Existing transformer positions disabled by configuration")
-        removed_transformer_buildings = self.dbc.remove_transformer_evidence_buildings_from_buildings_tem(**sources)
-        self.logger.info(
-            f"Removed {removed_transformer_buildings} transformer-evidence buildings from buildings_tem consumer input"
-        )
-
-    def prepare_ways(self):
-        """
-        Cache ways, create network, connect buildings to the ways network
-        FROM: the InfDB street tables, ``buildings_tem``
-        INTO: ``ways_tem``, ``buildings_tem``, ``ways_tem_vertices_pgr``
-        """
-        ways_rows = self.inf_dbc.fetch_ways_from_infdb(self.plz)
-        if postcode_border.enabled():
-            width_m = postcode_border.neighboring_street_width_m()
-            neighboring_rows = self.inf_dbc.fetch_neighboring_ways(
-                self.plz, self.dbc.get_postcode_polygon_wkb(self.plz), TARGET_EPSG,
-                width_m, first_way_id=max(int(row[-1]) for row in ways_rows))
-            self.logger.info(
-                f"Neighboring streets: {len(neighboring_rows)} ways of other PLZ within {width_m:.0f} m added")
-            ways_rows = list(ways_rows) + list(neighboring_rows)
-        ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows)
-        self.logger.info(f"The ways_tem table filled with {ways_count} ways")
-
-        # Index loaded roads before nearest-road searches.
-        self.dbc.index_and_analyze_staging(self.plz)
-
-        # Run preprocessing functions that segment roads and connect buildings
-        self.dbc.preprocess_ways()
-        self.logger.info("Ways preprocessing completed in ways_tem.")
-
-        # Build pgRouting topology on the processed network
-        self.dbc.build_pgr_network_topology(self.plz)
-        self.logger.info("pgRouting network topology created from ways_tem.")
-
-        self.dbc.update_ways_cost()
-        unconn = self.dbc.set_vertice_id()
-        self.logger.debug(f"vertice id set, {unconn} buildings with no vertice id")
-        if AGGREGATE_NEARBY_CONNECTION_POINTS:
-            aggregated_rows = self.dbc.aggregate_nearby_connection_points(
-                CONNECTION_POINT_AGGREGATION_RADIUS_M,
-                CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
-            )
-            self.logger.info(
-                "Aggregated nearby building connection points "
-                f"for {aggregated_rows} building rows "
-                f"(radius={CONNECTION_POINT_AGGREGATION_RADIUS_M} m, "
-                f"max_buildings={CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS})"
-            )
-
-    def apply_kmeans_clustering(self):
-        """
-        Find connected components (subgraphs) of an undirected street graph using Depth-First Search algorithm over
-        edges and vertices from ways_tem and, if necessary due to their size, apply k-means clustering to these
-        street network components.
-
-        FROM: ways_tem, buildings_tem
-        INTO: ways_tem, vertices_pgr, buildings_tem
-        """
-
-        # Get connected components from the street network
-        component, vertices = self.dbc.get_connected_component()
-        component_ids = np.unique(component)
-
-        if len(component_ids) > 0:
-            # A PLZ with a single loaded building gets it as its own grid; otherwise a street component
-            # with one building is dropped. With one component, its building count is the PLZ's.
-            if len(component_ids) > 1:
-                single_building_plz = self.dbc.count_connected_buildings(vertices) == 1
-                # Process multiple connected components
-                for i, component_id in enumerate(component_ids):
-                    # 1-D selection: int() of the 1-element rows of a 2-D selection is deprecated in NumPy.
-                    related_vertices = vertices[component == component_id]
-                    self._process_component_to_kcid(related_vertices, i, keep_single_building=single_building_plz)
-            else:
-                # Process single connected component
-                self._process_component_to_kcid(vertices, keep_single_building=True)
-        else:
-            # No components found - issue warning
-            warnings.warn("No connected components found in ways_tem table", stacklevel=2)
-
-        # Verify clustering was successful for all buildings
-        no_kmean_count = self.dbc.count_no_kmean_buildings()
-        if no_kmean_count not in [0, None]:
-            warnings.warn(f"K-means clustering issue: {no_kmean_count} buildings not assigned to clusters", stacklevel=2)
-
-    def _process_component_to_kcid(self, vertices, component_index=None, keep_single_building=False):
-        """Helper method to process components to kcid groups.
-
-        A component without loaded buildings is removed with its ways and transformers, and so is a
-        component with one building unless ``keep_single_building`` (it is the only building of the PLZ).
-        """
-        conn_building_count = self.dbc.count_connected_buildings(vertices)
-
-        if conn_building_count == 0 or (conn_building_count == 1 and not keep_single_building):
-            # Remove isolated or empty components
-            self.dbc.delete_ways(vertices)
-            self.dbc.delete_transformers_from_buildings_tem(vertices)
-            self.logger.debug("Empty/isolated component removed. Ways and transformers deleted from temporary tables.")
-        elif conn_building_count > MAX_BUILDINGS_PER_KCID:
-            # K-means applied to large components before the expensive KCID distance matrix is built.
-            cluster_count = math.ceil(conn_building_count / MAX_BUILDINGS_PER_KCID)
-            k_means = KMeans(n_clusters=cluster_count, random_state=K_MEANS_SEED, n_init="auto")
-            (selected_vertices, coordinates) = self.dbc.get_connected_component_geometries(vertices)
-            kcids = k_means.fit_predict(coordinates) + self.dbc.get_kcid_length() + 1
-            self.dbc.update_kmeans_cluster_multiple(selected_vertices, kcids)
-            log_msg = (
-                f"Large component {component_index} clustered into {cluster_count} groups "
-                f"(buildings={conn_building_count}, max_buildings_per_kcid={MAX_BUILDINGS_PER_KCID})"
-                if component_index is not None
-                else f"Large component clustered into {cluster_count} groups "
-                     f"(buildings={conn_building_count}, max_buildings_per_kcid={MAX_BUILDINGS_PER_KCID})"
-            )
-            self.logger.debug(log_msg)
-        else:
-            # Allocate cluster id for connected component smaller than the building threshold
-            self.dbc.update_kmeans_cluster(vertices)
 
     def position_all_transformers(self):
         """

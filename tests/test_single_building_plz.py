@@ -5,7 +5,8 @@ import logging
 import numpy as np
 import pytest
 
-from pylovo.grid_generator import GridGenerator
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.street_clusters import StreetClustering
 
 
 class Db:
@@ -43,7 +44,6 @@ class Db:
     ({1: 3, 2: 1}, [1], [2]),        # an isolated building next to a grid: dropped as before
 ])
 def test_only_the_single_building_of_a_plz_keeps_its_component(buildings_per_component, kept, dropped):
-    gg = GridGenerator.__new__(GridGenerator)
-    gg.dbc, gg.logger = Db(buildings_per_component), logging.getLogger("single-building-test")
-    gg.apply_kmeans_clustering()
-    assert (gg.dbc.kept, gg.dbc.dropped) == (kept, dropped)
+    db = Db(buildings_per_component)
+    StreetClustering(GenerationContext(plz=80331, dbc=db, logger=logging.getLogger("single-building-test"))).run()
+    assert (db.kept, db.dropped) == (kept, dropped)
