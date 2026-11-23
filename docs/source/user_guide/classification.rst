@@ -397,6 +397,10 @@ step 6 ``pylovo-classify`` repeats the steps on the sample and on ``SELECTION_BO
   clusters within 2 % of the best CH index, a DB index that prefers another number, and every choice that fewer
   than 80 % of the resamples repeat.
 
+A resample whose factor analysis or clustering fails (for example a singular correlation matrix) is left out: the
+report counts it (``bootstrap.failed``, the first ten messages in ``bootstrap.failures``), warns, and computes the
+shares over the other resamples, so the run continues to step 7.
+
 The report changes no choice. It is printed, written to ``log/selection_report_<id>.md``, stored as JSON in
 ``classification_version.selection_report`` and its warnings go to the log.
 ``selection_report`` in ``pylovo.classification.clustering.selection_report`` computes it for any frame of key

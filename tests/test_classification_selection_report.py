@@ -40,7 +40,7 @@ def test_the_report_repeats_the_choices_of_the_pipeline(frame, transform):
     assert result["factors"] == get_params.number_of_factors(candidates)
     for name in ("kmeans", "gmm_tied"):
         assert result["clusters"][name]["best_ch"] == ch.set_index("algorithm").at[name, "no_clusters"]
-    assert result["bootstrap"] == {"resamples": 0, "seed": 0}
+    assert result["bootstrap"] == {"resamples": 0, "failed": 0, "seed": 0}
 
 
 def test_every_pick_names_its_runner_up_and_margin(report):
@@ -57,6 +57,28 @@ def test_the_bootstrap_shares_add_up_and_repeat_with_the_seed(frame, report):
     assert set(boot["best_k"]) == {"kmeans", "gmm_tied"} and set(boot["best_k"]["kmeans"]["ch"]) <= {"3", "4", "5"}
     assert [r["rank"] for r in boot["eigenvalue_ranges"]] == list(range(1, len(boot["eigenvalue_ranges"]) + 1))
     assert sr.selection_report(frame, None, "yeo-johnson", resamples=4, no_of_clusters_allowed=ALLOWED) == report
+
+
+def test_a_failing_resample_is_counted_and_the_run_goes_on(frame, report, monkeypatch):
+    """S7: a LinAlgError (or ValueError) in one resample costs that resample, not the run after its longest step."""
+    import numpy as np
+
+    selection, calls = sr._selection, []
+
+    def flaky(df, transform):
+        calls.append(len(df))
+        if len(calls) == 3:                                  # the second resample (the first call is the sample)
+            raise np.linalg.LinAlgError("Singular matrix")
+        return selection(df, transform)
+
+    monkeypatch.setattr(sr, "_selection", flaky)
+    result = sr.selection_report(frame, None, "yeo-johnson", resamples=4, no_of_clusters_allowed=ALLOWED)
+    boot = result["bootstrap"]
+    assert (boot["resamples"], boot["failed"]) == (3, 1) and boot["failures"] == ["resample 2: LinAlgError: Singular matrix"]
+    assert any("1 of 4 bootstrap resamples failed" in text for text in result["warnings"])
+    assert sum(boot["factor_counts"].values()) == pytest.approx(1, abs=0.01)
+    assert "4 PLZ bootstrap" not in sr.format_selection_report(result) and ", 1 failed)" in sr.format_selection_report(result)
+    assert result["parameters"] == report["parameters"], "the sample itself is not resampled"
 
 
 def test_every_close_call_has_a_warning(report):

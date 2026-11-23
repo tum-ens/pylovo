@@ -121,13 +121,20 @@ def selection_report(df_parameters: pd.DataFrame, list_of_clustering_parameters:
         _, kmo = kaiser_meyer_olkin(full["candidates"])
         rng = np.random.default_rng(seed)
         runs = []
-        for _ in range(resamples):
+        failures: list[str] = []
+        for number in range(resamples):
             sample = _resample(df_parameters, rng)
-            selection = _selection(sample, transform)
-            curves = _cluster_indices(sample, parameters, transform, allowed)
+            try:
+                selection = _selection(sample, transform)
+                curves = _cluster_indices(sample, parameters, transform, allowed)
+                best = {name: (int(t["ch"].idxmax()), int(t["db"].idxmin())) for name, t in curves.items()}
+            except (ValueError, np.linalg.LinAlgError) as exc:
+                # one degenerate resample (e.g. a singular correlation matrix) must not stop the run after its
+                # longest step: it is counted and named, and the shares are over the other resamples
+                failures.append(f"resample {number + 1}: {type(exc).__name__}: {exc}")
+                continue
             runs.append({"eigenvalues": selection["eigenvalues"], "n_factors": selection["n_factors"],
-                         "picks": selection["picks"],
-                         "best": {name: (int(t["ch"].idxmax()), int(t["db"].idxmin())) for name, t in curves.items()}})
+                         "picks": selection["picks"], "best": best})
 
     eigenvalues = full["eigenvalues"]
     n_factors = full["n_factors"]
@@ -177,7 +184,11 @@ def selection_report(df_parameters: pd.DataFrame, list_of_clustering_parameters:
         if best_db != best_ch:
             report_warnings.append(f"{name}: the DB index prefers k = {best_db}, the CH index k = {best_ch}.")
 
-    bootstrap = {"resamples": len(runs), "seed": seed}
+    bootstrap = {"resamples": len(runs), "failed": len(failures), "seed": seed}
+    if failures:
+        bootstrap["failures"] = failures[:10]
+        report_warnings.append(f"{len(failures)} of {resamples} bootstrap resamples failed and are left out of the "
+                               f"shares (first: {failures[0]}).")
     if runs:
         factor_counts = _shares(run["n_factors"] for run in runs)
         ranks = min(len(eigenvalues), n_factors + 2)
@@ -224,7 +235,8 @@ def format_selection_report(report: dict, classification_id: int | None = None) 
     adequacy = report["adequacy"]
     lines = [f"# {title}", "",
              f"{report['grids']} grids in {report['plz']} PLZ, transform {report['transform']}, "
-             f"{report['bootstrap']['resamples']} PLZ bootstrap resamples (seed {report['bootstrap']['seed']}).", "",
+             f"{report['bootstrap']['resamples']} PLZ bootstrap resamples (seed {report['bootstrap']['seed']}"
+             + (f", {report['bootstrap']['failed']} failed" if report["bootstrap"].get("failed") else "") + ").", "",
              "## Factor analysis", "",
              f"- Bartlett's test: chi2 {adequacy['bartlett_chi2']}, p {adequacy['bartlett_p']:.3g}. "
              f"KMO {adequacy['kmo']} (needs {KMO_MIN} or more).",
