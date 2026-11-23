@@ -10,9 +10,17 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from conftest import requires_db
+from conftest import requires_db, use_toy_town_settings
 from pylovo_api import chain, job_outcomes, preflight
 from pylovo_api.jobs import JobManager
+
+
+@pytest.fixture()
+def project(project):
+    """The project of ``conftest.py`` with the settings of the test database: the flow endpoints compare the saved
+    configuration with the stored snapshot of the version."""
+    use_toy_town_settings(project)
+    return project
 
 
 # --------------------------------------------------------------------------- pure helpers
@@ -105,7 +113,7 @@ def test_chain_runs_in_order_and_stops_at_the_first_failure(tmp_path):
 # --------------------------------------------------------------------------- test database
 @requires_db
 def test_preflight_matches_the_stored_snapshot(client, region):
-    """Version 1 of the test database was generated with the config/ of the checkout."""
+    """Version 1 of the test database was generated with the config/ of the checkout and the toy-town settings."""
     state = client.get("/api/flow/generate-state", params={"plz": region["plz"]}).json()
     assert state["error"] is None and state["version_id"] == "1"
     assert state["comparison"]["exists"] and state["comparison"]["matches"] is True

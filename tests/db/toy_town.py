@@ -38,6 +38,9 @@ PLZ_TOWN, PLZ_VILLAGE, PLZ_NO_GEOMETRY = 99001, 99002, 99003
 POSTCODES = {PLZ_TOWN: ("Toy Town", 0, 0, 1000, 600), PLZ_VILLAGE: ("Toy Village", 1000, 0, 1600, 600)}
 AGS = {PLZ_TOWN: 99001000, PLZ_VILLAGE: 99002000, PLZ_NO_GEOMETRY: 99003000}
 GENERATED_PLZ = sorted(POSTCODES)
+#: Changes of config_generation_lv.yaml that every version of the test database is generated with: the toy town is
+#: InfDB data with the class Auxiliary. The flow tests of the API give their project the same settings.
+SETTINGS = {"EXCLUDE_BUILDINGS_WITHOUT_ADDRESS": False}
 
 #: name, klasse (InfDB road class), start, end (local metres, axis-parallel)
 STREETS = [

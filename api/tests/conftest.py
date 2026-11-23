@@ -13,8 +13,11 @@ apply and undo load edits and leave their audit rows. Never point them at a data
 """
 from __future__ import annotations
 
+import importlib.util
 import os
+import re
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -81,6 +84,22 @@ def region(conn) -> dict:
         ORDER BY mr.plz LIMIT 1""").format(postcodes=sql.Identifier(cl.INFDB_OPENDATA_SCHEMA, "postcodes_germany"))
     rows = q(conn, no_polygon, {"plz": plz})
     return {"plz": plz, "no_geometry": rows[0][0] if rows else None}
+
+
+def use_toy_town_settings(project: Path) -> None:
+    """Give the configuration of ``project`` the settings every version of the toy-town test database is generated
+    with (``SETTINGS`` of ``tests/db/toy_town.py``), so the saved configuration matches the stored snapshot of
+    version 1. Only the values change: comments and order of the file stay."""
+    spec = importlib.util.spec_from_file_location("_toy_town_for_api_tests", ROOT / "tests" / "db" / "toy_town.py")
+    toy_town = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = toy_town        # its dataclasses look their module up while it runs
+    spec.loader.exec_module(toy_town)
+    path = project / "config" / "config_generation_lv.yaml"
+    text = path.read_text(encoding="utf-8")
+    for key, value in toy_town.SETTINGS.items():
+        text, count = re.subn(rf"(?m)^{re.escape(key)}:.*$", f"{key}: {value}", text)
+        assert count == 1, f"{key} is not a top-level key of {path.name}"
+    path.write_text(text, encoding="utf-8")
 
 
 @pytest.fixture()
