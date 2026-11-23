@@ -62,7 +62,7 @@ def test_without_parallelism_the_plz_are_generated_one_after_the_other_and_the_v
     gen.dbc.refresh_materialized_views = lambda: refreshed.append(True)
     monkeypatch.setattr(lv_generator, "N_JOBS", jobs)
     monkeypatch.setattr(GridGenerator, "generate_grid_for_single_plz",
-                        lambda self, plz, analyze_grids=False, refresh_mv=True: calls.append((plz, refresh_mv)) or
+                        lambda self, plz, analyze_grids=False, refresh_views=True: calls.append((plz, refresh_views)) or
                         GenerationOutcome.GENERATED)
 
     result = gen.generate_grid_for_multiple_plz(pd.DataFrame({"plz": plz}), parallel=parallel)

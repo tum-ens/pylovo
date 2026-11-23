@@ -90,7 +90,7 @@ class GridGenerator:
             close()
 
     def generate_grid_for_single_plz(
-        self, plz: int, analyze_grids: bool = False, refresh_mv: bool = True
+        self, plz: int, analyze_grids: bool = False, refresh_views: bool = True
     ) -> GenerationOutcome:
         """Generates the grid for a single PLZ.
 
@@ -104,8 +104,8 @@ class GridGenerator:
         :type plz: int
         :param analyze_grids: Option to analyze the results after grid generation, defaults to False.
         :type analyze_grids: bool
-        :param refresh_mv: Refresh materialized views after processing, defaults to True.
-        :type refresh_mv: bool
+        :param refresh_views: Refresh materialized views after processing, defaults to True.
+        :type refresh_views: bool
         :return: The outcome of the PLZ.
         :rtype: GenerationOutcome
         """
@@ -179,7 +179,7 @@ class GridGenerator:
         if interrupted:
             raise KeyboardInterrupt("Grid generation interrupted by user")
 
-        if refresh_mv:
+        if refresh_views:
             # update the materialized views to reflect changes in their base tables
             self.dbc.ensure_connection()
             self.dbc.refresh_materialized_views()
@@ -273,7 +273,7 @@ class GridGenerator:
             for plz in plz_list:
                 # defer materialized view refresh until all PLZ are processed
                 outcomes[plz] = self.generate_grid_for_single_plz(
-                    plz=plz, analyze_grids=analyze_grids, refresh_mv=False
+                    plz=plz, analyze_grids=analyze_grids, refresh_views=False
                 )
 
         # refresh materialized views once after all grids have been generated
@@ -319,7 +319,7 @@ class GridGenerator:
         try:
             gg = GridGenerator(log_file=log_file)
             return gg.generate_grid_for_single_plz(
-                plz=plz, analyze_grids=analyze_grids, refresh_mv=False
+                plz=plz, analyze_grids=analyze_grids, refresh_views=False
             )
         except Exception:
             if gg is not None:
