@@ -173,10 +173,10 @@ def plot_ch_index_for_clustering_algos(
 
     # Test different algorithms
     algorithms = [
-        ('kmeans', lambda n: KMeans(n_clusters=n, random_state=0)),
+        ('kmeans', lambda n: KMeans(n_clusters=n, random_state=0, n_init=10)),
         ('gmm_full', lambda n: GaussianMixture(n_components=n, covariance_type='full', random_state=1)),
         ('gmm_diag', lambda n: GaussianMixture(n_components=n, covariance_type='diag', random_state=1)),
-        ('gmm_tied', lambda n: GaussianMixture(n_components=n, covariance_type='tied', random_state=1)),
+        ('gmm_tied', lambda n: GaussianMixture(n_components=n, covariance_type='tied', random_state=1, n_init=5)),
         ('gmm_sph', lambda n: GaussianMixture(n_components=n, covariance_type='spherical', random_state=1))
     ]
 
@@ -231,10 +231,10 @@ def plot_db_index_for_clustering_algos(
 
     # same seeds as plot_ch_index_for_clustering_algos, so the results are reproducible
     algorithms = [
-        ('kmeans', lambda n: KMeans(n_clusters=n, random_state=0)),
+        ('kmeans', lambda n: KMeans(n_clusters=n, random_state=0, n_init=10)),
         ('gmm_full', lambda n: GaussianMixture(n_components=n, covariance_type='full', random_state=1)),
         ('gmm_diag', lambda n: GaussianMixture(n_components=n, covariance_type='diag', random_state=1)),
-        ('gmm_tied', lambda n: GaussianMixture(n_components=n, covariance_type='tied', random_state=1)),
+        ('gmm_tied', lambda n: GaussianMixture(n_components=n, covariance_type='tied', random_state=1, n_init=5)),
         ('gmm_sph', lambda n: GaussianMixture(n_components=n, covariance_type='spherical', random_state=1))
     ]
 

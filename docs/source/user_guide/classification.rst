@@ -397,8 +397,10 @@ Step 7: clustering and result
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The parameters are transformed (``TRANSFORM``) and standardised, then the grids are clustered with k-means
-(``random_state=0``) and with a Gaussian
-mixture model with tied covariance (``random_state=1``). The **representative grid** of a cluster is the real grid
+(``random_state=0``, ten initialisations, the fit with the lowest inertia is kept) and with a Gaussian
+mixture model with tied covariance (``random_state=1``, five initialisations). A single k-means start can end in a
+local optimum: on the 26,049 grids of classification 2 some seeds gave a 22 % higher inertia at k = 4.
+The CH and DB curves and the selection report use the same settings. The **representative grid** of a cluster is the real grid
 closest to the cluster centre. The clusters are numbered by the number of households of their representative grid:
 cluster 0 has the smallest representative. K-medoids was removed to avoid the ``scikit-learn-extra``
 dependency.

@@ -118,15 +118,15 @@ def test_clusters_with_equal_households_keep_their_order():
 
 
 def test_gmm_mismatch_exists_in_default_setting():
-    """Evidence for CLASSIF-02: at k=4 (shipped default) a few percent of heavy-tailed data sets trigger it."""
+    """Evidence for CLASSIF-02: at k=4 (shipped default, five initialisations) about 1 % of heavy-tailed data sets trigger it."""
     from scipy.cluster.vq import vq
     from sklearn import preprocessing
     from sklearn.mixture import GaussianMixture
 
     bad = 0
-    for seed in range(60):
+    for seed in range(150):
         X = preprocessing.scale(heavy_tailed(120, seed)[["a", "b", "c"]])
-        gm = GaussianMixture(n_components=4, covariance_type="tied", random_state=1).fit(X)
+        gm = GaussianMixture(n_components=4, covariance_type="tied", random_state=1, n_init=5).fit(X)
         closest, _ = vq(gm.means_, X)
         bad += not (gm.predict(X)[closest] == np.arange(4)).all()
     assert bad >= 1

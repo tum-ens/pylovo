@@ -105,7 +105,7 @@ def gmm_tied_clustering(
     """
     # transform, scaling and clustering
     X = scaled_key_figures(df_parameters_of_grids, list_of_clustering_parameters, transform)
-    gm = GaussianMixture(n_components=n_clusters, covariance_type='tied', random_state=1).fit(X)
+    gm = GaussianMixture(n_components=n_clusters, covariance_type='tied', random_state=1, n_init=5).fit(X)
     print('converged:', gm.converged_)
     print('no of iterations', gm.n_iter_)
     # we store the cluster labels
@@ -143,7 +143,7 @@ def kmeans_clustering(
     """
     # transform, scaling and clustering
     X = scaled_key_figures(df_parameters_of_grids, list_of_clustering_parameters, transform)
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(X)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(X)
     # we store the cluster labels
     labels = kmeans.labels_
     df_parameters_of_grids['clusters'] = labels

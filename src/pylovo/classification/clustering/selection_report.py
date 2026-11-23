@@ -41,8 +41,8 @@ CH_NEAR_TIE = 0.02
 
 #: The two algorithms of step 7 with their seeds (as in ``clustering_algorithms`` and the CH curves)
 ALGORITHMS = {
-    "kmeans": lambda k: KMeans(n_clusters=k, random_state=0),
-    "gmm_tied": lambda k: GaussianMixture(n_components=k, covariance_type="tied", random_state=1),
+    "kmeans": lambda k: KMeans(n_clusters=k, random_state=0, n_init=10),
+    "gmm_tied": lambda k: GaussianMixture(n_components=k, covariance_type="tied", random_state=1, n_init=5),
 }
 
 

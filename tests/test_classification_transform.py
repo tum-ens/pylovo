@@ -48,7 +48,7 @@ def test_kmeans_clusters_the_transformed_and_standardised_parameters(transform):
     frame = synthetic_clustering_parameters()
     out, _ = clustering_algorithms.kmeans_clustering(frame.copy(), PARAMS, 4, transform=transform)
     X = preprocessing.scale(transform_key_figures(frame[PARAMS], transform))
-    expected = KMeans(n_clusters=4, random_state=0).fit(X).labels_
+    expected = KMeans(n_clusters=4, random_state=0, n_init=10).fit(X).labels_
     assert pd.crosstab(out["clusters"], expected).gt(0).sum(axis=1).eq(1).all(), "the same partition, renumbered"
 
 

@@ -122,7 +122,7 @@ def test_ch_index_table_contract_and_value():
     assert list(table["algorithm"]) == ["kmeans", "gmm_full", "gmm_diag", "gmm_tied", "gmm_sph"]
     assert table["no_clusters"].isin(ALLOWED).all() and (table["ch_index"] > 0).all()
     X = preprocessing.scale(frame[PARAMS])
-    scores = {k: calinski_harabasz_score(X, KMeans(n_clusters=k, random_state=0).fit(X).labels_) for k in ALLOWED}
+    scores = {k: calinski_harabasz_score(X, KMeans(n_clusters=k, random_state=0, n_init=10).fit(X).labels_) for k in ALLOWED}
     kmeans_row = table[table["algorithm"] == "kmeans"].iloc[0]
     assert kmeans_row["no_clusters"] == max(scores, key=scores.get) and kmeans_row["ch_index"] == pytest.approx(max(scores.values()))
 
@@ -133,7 +133,7 @@ def test_db_index_picks_the_minimum():
         warnings.simplefilter("ignore")
         table = plot_db_index_for_clustering_algos(frame, ALLOWED, PARAMS, transform="none")
     X = preprocessing.scale(frame[PARAMS])
-    scores = {k: davies_bouldin_score(X, KMeans(n_clusters=k, random_state=0).fit(X).labels_) for k in ALLOWED}
+    scores = {k: davies_bouldin_score(X, KMeans(n_clusters=k, random_state=0, n_init=10).fit(X).labels_) for k in ALLOWED}
     kmeans_row = table[table["algorithm"] == "kmeans"].iloc[0]
     assert kmeans_row["no_clusters"] == min(scores, key=scores.get)
 
