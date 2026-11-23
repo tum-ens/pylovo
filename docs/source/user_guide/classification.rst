@@ -61,8 +61,8 @@ Before you start
   for example because the data do not cover it, is logged, skipped and removed from the sample set.
 * The plotting extra is installed: ``uv sync --extra plots``. The clustering helpers import matplotlib, seaborn
   and plotly, so without the extra ``pylovo-classify`` stops at the start with a message that names the
-  missing package and the extra. The notebooks need ``--extra notebooks``. ``factor-analyzer`` and
-  scikit-learn are core dependencies.
+  missing package and the extra. The notebooks need ``--extra notebooks``. scikit-learn is a core
+  dependency. The eigenvalues, Bartlett's test and the KMO criterion are computed with numpy and scipy.
 * The grids come from the ``VERSION_ID`` of ``config_generation_lv.yaml`` (:ref:`versions`). Its configuration
   must still match the stored snapshot, otherwise step 3 stops with ``Generation parameters differ from the
   stored snapshot``.

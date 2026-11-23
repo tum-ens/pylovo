@@ -3,7 +3,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from factor_analyzer import FactorAnalyzer
+from scipy import stats
 
 from pylovo.classification.clustering.transform import transform_key_figures
 from pylovo.classification.database_communication.database_communication import DatabaseCommunication
@@ -36,6 +36,35 @@ def factor_analysis_input(df_parameters: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=collinear_cols)
 
 
+def _complete_values(df_candidates: pd.DataFrame) -> np.ndarray:
+    """Return the candidates as a float array; a missing value is an error, never imputed.
+
+    Raises:
+        ValueError: If a candidate has a missing value (NaN), naming the candidates.
+    """
+    values = df_candidates.to_numpy(dtype=float)
+    missing = np.isnan(values).any(axis=0)
+    if missing.any():
+        raise ValueError("The factor analysis needs complete data, missing values (NaN) in: "
+                         + ", ".join(map(str, df_candidates.columns[missing])))
+    return values
+
+
+def correlation_matrix(df_candidates: pd.DataFrame) -> np.ndarray:
+    """Return the Pearson correlation matrix of the candidates.
+
+    Raises:
+        ValueError: If a candidate has a missing value (NaN) or the same value in every grid.
+    """
+    values = _complete_values(df_candidates)
+    std = values.std(axis=0)
+    if (std == 0).any():
+        raise ValueError("A candidate has the same value in every grid: "
+                         + ", ".join(map(str, df_candidates.columns[std == 0])))
+    z = (values - values.mean(axis=0)) / std
+    return z.T @ z / len(z)
+
+
 def candidate_eigenvalues(df_candidates: pd.DataFrame) -> np.ndarray:
     """Return the eigenvalues of the correlation matrix of the candidates, largest first.
 
@@ -43,20 +72,48 @@ def candidate_eigenvalues(df_candidates: pd.DataFrame) -> np.ndarray:
         df_candidates: Candidate key figures (:func:`factor_analysis_input`).
 
     Raises:
-        ValueError: If the data cannot be analysed, e.g. a missing value.
-        numpy.linalg.LinAlgError: If the correlation matrix stays singular.
+        ValueError: If the data cannot be analysed: a missing value (NaN) or a candidate that is the same in every
+            grid.
     """
-    with warnings.catch_warnings():
-        # factor-analyzer 0.5.1 passes an argument that scikit-learn 1.6 renamed; nothing to act on here.
-        warnings.filterwarnings("ignore", message="'force_all_finite' was renamed", category=FutureWarning)
-        fa = FactorAnalyzer()
-        try:
-            fa.fit(df_candidates)
-        except np.linalg.LinAlgError:
-            # Fallback when the correlation matrix is still singular due to numerical issues.
-            fa = FactorAnalyzer(use_smc=False)
-            fa.fit(df_candidates)
-    return fa.get_eigenvalues()[0]
+    return np.linalg.eigvalsh(correlation_matrix(df_candidates))[::-1]
+
+
+def bartlett_sphericity(df_candidates: pd.DataFrame) -> tuple[float, float]:
+    """Return Bartlett's test of sphericity: chi-square and p-value of the hypothesis of uncorrelated candidates.
+
+    ``chi2 = -(n - 1 - (2p + 5) / 6) * ln det R`` with ``p (p - 1) / 2`` degrees of freedom (n grids, p candidates,
+    R the correlation matrix). A singular R gives an infinite chi-square and p = 0.
+
+    Raises:
+        ValueError: As :func:`correlation_matrix`.
+    """
+    n, p = df_candidates.shape
+    sign, logdet = np.linalg.slogdet(correlation_matrix(df_candidates))
+    chi2 = np.inf if sign <= 0 else float(-(n - 1 - (2 * p + 5) / 6) * logdet)
+    return chi2, float(stats.chi2.sf(chi2, p * (p - 1) / 2))
+
+
+def kmo(df_candidates: pd.DataFrame) -> tuple[pd.Series, float]:
+    """Return the Kaiser-Meyer-Olkin criterion per candidate and overall.
+
+    KMO compares the squared correlations with the squared partial correlations (from the inverse of the correlation
+    matrix; the pseudo-inverse if it is singular): ``sum r^2 / (sum r^2 + sum q^2)`` over the pairs.
+
+    Raises:
+        ValueError: As :func:`correlation_matrix`.
+    """
+    r = correlation_matrix(df_candidates)
+    try:
+        inverse = np.linalg.inv(r) if np.linalg.det(r) > np.finfo(np.float32).eps else np.linalg.pinv(r)
+    except np.linalg.LinAlgError:
+        inverse = np.linalg.pinv(r)
+    scale = np.sqrt(np.outer(np.diag(inverse), np.diag(inverse)))
+    partial = -inverse / scale
+    np.fill_diagonal(r, 0)
+    np.fill_diagonal(partial, 0)
+    r2, q2 = r ** 2, partial ** 2
+    per_candidate = r2.sum(axis=0) / (r2.sum(axis=0) + q2.sum(axis=0))
+    return pd.Series(per_candidate, index=df_candidates.columns), float(r2.sum() / (r2.sum() + q2.sum()))
 
 
 def number_of_factors(df_candidates: pd.DataFrame) -> int:
@@ -67,7 +124,6 @@ def number_of_factors(df_candidates: pd.DataFrame) -> int:
 
     Raises:
         ValueError: If the data cannot be analysed, e.g. a missing value.
-        numpy.linalg.LinAlgError: If the correlation matrix stays singular.
     """
     return max(int((candidate_eigenvalues(df_candidates) > 1).sum()), 1)
 

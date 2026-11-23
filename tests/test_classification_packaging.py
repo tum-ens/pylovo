@@ -30,7 +30,7 @@ def test_cli_without_the_plots_extra_stops_with_a_message():
 
 
 def test_cli_does_not_hide_other_import_errors():
-    code = ("import sys\nsys.modules['factor_analyzer'] = None\nimport pylovo.cli.classify\n")
+    code = ("import sys\nsys.modules['sklearn.mixture'] = None\nimport pylovo.cli.classify\n")
     result = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True)
     assert result.returncode != 0 and "ModuleNotFoundError" in result.stderr and "--extra plots" not in result.stderr
 

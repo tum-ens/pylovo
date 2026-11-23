@@ -227,6 +227,50 @@ def test_number_of_factors_counts_the_eigenvalues_above_one_without_warnings():
         assert get_params.number_of_factors(candidates) == int((eigenvalues > 1).sum())
 
 
+def _weakly_correlated() -> pd.DataFrame:
+    rng = np.random.default_rng(7)
+    x = rng.normal(size=(60, 4))
+    x[:, 1] += 0.4 * x[:, 0]
+    x[:, 3] += 0.3 * x[:, 2]
+    return pd.DataFrame(x, columns=list("abcd"))
+
+
+def test_eigenvalues_bartlett_and_kmo_match_factor_analyzer():
+    """Reference values of factor-analyzer 0.5.1 (FactorAnalyzer.get_eigenvalues, calculate_bartlett_sphericity,
+    calculate_kmo) on the same data, before the package was dropped."""
+    df = _weakly_correlated()
+    assert np.allclose(get_params.candidate_eigenvalues(df),
+                       [1.5463894760821975, 1.2806204907142285, 0.6870397603870568, 0.48595027281651815], atol=1e-12)
+    chi2, p_value = get_params.bartlett_sphericity(df)
+    assert chi2 == pytest.approx(23.51448080960816, rel=1e-10) and p_value == pytest.approx(0.0006412674716571795, rel=1e-8)
+    per_candidate, total = get_params.kmo(df)
+    assert np.allclose(per_candidate, [0.46512614712605477, 0.4911708504696012, 0.553677904833076, 0.49610136003925986],
+                       atol=1e-12)
+    assert list(per_candidate.index) == list("abcd") and total == pytest.approx(0.49308958928831775, rel=1e-10)
+
+
+@pytest.mark.parametrize("helper", ["candidate_eigenvalues", "bartlett_sphericity", "kmo"])
+def test_a_missing_value_is_an_error_not_imputed(helper):
+    df = _weakly_correlated()
+    df.loc[5, "c"] = np.nan
+    with pytest.raises(ValueError, match=r"missing values \(NaN\) in: c"):
+        getattr(get_params, helper)(df)
+
+
+def test_a_constant_candidate_is_named():
+    df = _weakly_correlated().assign(b=1.0)
+    with pytest.raises(ValueError, match="same value in every grid: b"):
+        get_params.candidate_eigenvalues(df)
+
+
+def test_a_singular_correlation_matrix_still_gives_the_adequacy_checks():
+    df = _weakly_correlated().assign(e=lambda d: d["a"] + d["b"])
+    assert get_params.bartlett_sphericity(df) == (np.inf, 0.0) or get_params.bartlett_sphericity(df)[0] > 1e3
+    _, total = get_params.kmo(df)
+    assert 0 <= total <= 1
+    assert get_params.candidate_eigenvalues(df)[-1] == pytest.approx(0, abs=1e-10)
+
+
 @pytest.mark.parametrize("transform", ["none", "yeo-johnson"])
 def test_the_pipeline_selects_with_the_helpers(fake_dc, transform):
     """The candidates are transformed like the clustering parameters, with the transform of the classification."""

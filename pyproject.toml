@@ -52,8 +52,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10,<3.0.0",
     "sqlparse==0.6.0",
     # Clustering & classification
-    "scikit-learn>=1.6.1,<1.8.0",
-    "factor-analyzer==0.5.1",
+    "scikit-learn>=1.6.1,<1.10",
     # Utilities
     "pyyaml>=6.0.2,<7.0.0",
     "python-dotenv>=1.0.1,<2.0.0",

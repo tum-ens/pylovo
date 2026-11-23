@@ -14,13 +14,17 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from factor_analyzer.factor_analyzer import calculate_bartlett_sphericity, calculate_kmo
 from sklearn.cluster import KMeans
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 from sklearn.mixture import GaussianMixture
 
 from pylovo.classification.clustering.clustering_algorithms import scaled_key_figures
-from pylovo.classification.clustering.get_parameters_for_clustering import candidate_eigenvalues, factor_analysis_input
+from pylovo.classification.clustering.get_parameters_for_clustering import (
+    bartlett_sphericity,
+    candidate_eigenvalues,
+    factor_analysis_input,
+    kmo as kaiser_meyer_olkin,
+)
 from pylovo.classification.clustering.transform import transform_key_figures
 from pylovo.classification.database_communication.database_communication import DatabaseCommunication
 from pylovo.config_loader import NO_OF_CLUSTERS_ALLOWED, SELECTION_BOOTSTRAP
@@ -113,8 +117,8 @@ def selection_report(df_parameters: pd.DataFrame, list_of_clustering_parameters:
         full = _selection(df_parameters, transform)
         parameters = list(list_of_clustering_parameters or full["picks"])
         indices = _cluster_indices(df_parameters, parameters, transform, allowed)
-        chi2, p_value = calculate_bartlett_sphericity(full["candidates"])
-        _, kmo = calculate_kmo(full["candidates"])
+        chi2, p_value = bartlett_sphericity(full["candidates"])
+        _, kmo = kaiser_meyer_olkin(full["candidates"])
         rng = np.random.default_rng(seed)
         runs = []
         for _ in range(resamples):
