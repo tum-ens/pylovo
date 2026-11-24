@@ -93,12 +93,12 @@ def _line_lookup(df_line: pd.DataFrame) -> Dict[Tuple[int, int], Dict[str, Any]]
     if df_line.empty:
         return line_lookup
 
-    for _, row in df_line.iterrows():
+    for row in df_line.to_dict("records"):
         key = tuple(sorted((int(row["from_bus"]), int(row["to_bus"]))))
         if key in line_lookup:
             duplicate_edges += 1
             continue
-        line_lookup[key] = row.to_dict()
+        line_lookup[key] = row
 
     if duplicate_edges:
         logger.debug(
@@ -154,10 +154,6 @@ def _line_table_with_simultaneity(
         )
         return df_line
 
-    sim_defs = pd.DataFrame.from_dict(SIM_FACTOR, orient="index", columns=["sim_factor"])
-    sim_defs.index.name = "description"
-    sim_defs.reset_index(inplace=True)
-
     loads = effective_load_table.copy()
 
     if "category" in loads.columns:
@@ -188,56 +184,54 @@ def _line_table_with_simultaneity(
     if bus_zone_stats.empty:
         return df_line
 
-    bus_zone_stats = bus_zone_stats.merge(sim_defs, left_on="zone", right_on="description", how="left")
-    bus_zone_stats["sim_factor"] = bus_zone_stats["sim_factor"].fillna(1.0)
+    # The first line of a bus and of a bus pair in table order: the line the earlier boolean masks picked with
+    # index[0] and idxmax. Plain dicts instead of a mask over the line table per bus keep the walk linear.
+    first_line_of_bus: Dict[Any, Any] = {}
+    first_line_of_pair: Dict[Tuple[Any, Any], Any] = {}
+    for line_idx, from_bus, to_bus in zip(df_line.index, df_line["from_bus"], df_line["to_bus"]):
+        first_line_of_bus.setdefault(from_bus, line_idx)
+        first_line_of_bus.setdefault(to_bus, line_idx)
+        first_line_of_pair.setdefault((from_bus, to_bus), line_idx)
+        first_line_of_pair.setdefault((to_bus, from_bus), line_idx)
+    stats_rows = list(zip(bus_zone_stats["bus"], bus_zone_stats["zone"], bus_zone_stats["count"],
+                          bus_zone_stats["max_p_mw"]))
 
-    bus_zone_stats["sim_load"] = bus_zone_stats.apply(
-        lambda row: utils.category_simultaneous_load(1, row["count"], row["sim_factor"]) * row["max_p_mw"],
-        axis=1,
-    )
+    sim_load = dict.fromkeys(df_line.index, 0.0)
+    sim_factor_cumulated = dict.fromkeys(df_line.index, 1.0)
 
-    bus_zone_stats["sim_factor_level1"] = bus_zone_stats.apply(
-        lambda row: utils.category_simultaneous_load(1, row["count"], row["sim_factor"]),
-        axis=1,
-    )
-
-    line_stats = {}
-
-    for _, row in bus_zone_stats.iterrows():
-        bus_idx = row["bus"]
-        incident_lines = df_line[(df_line["from_bus"] == bus_idx) | (df_line["to_bus"] == bus_idx)]
-        if incident_lines.empty:
+    # House-connection buses are expected to attach to a single upstream line.
+    line_stats: Dict[Any, List[float]] = {}
+    for bus_idx, zone, count, peak in stats_rows:
+        line_idx = first_line_of_bus.get(bus_idx)
+        if line_idx is None:
             continue
+        seeded = line_stats.setdefault(line_idx, [0.0, 0.0])
+        seeded[0] += utils.category_simultaneous_load(1, count, SIM_FACTOR.get(zone, 1.0)) * peak
+        seeded[1] += peak
+    for line_idx, (seeded_sim_load, seeded_peak_load) in line_stats.items():
+        sim_load[line_idx] = seeded_sim_load
+        sim_factor_cumulated[line_idx] = seeded_sim_load / seeded_peak_load if seeded_peak_load > 0 else 0.0
 
-        # House-connection buses are expected to attach to a single upstream line.
-        line_idx = incident_lines.index[0]
-
-        if line_idx not in line_stats:
-            line_stats[line_idx] = {"sim_load": 0.0, "peak_load": 0.0}
-
-        line_stats[line_idx]["sim_load"] += row["sim_load"]
-        line_stats[line_idx]["peak_load"] += row["max_p_mw"]
-
-    for idx, stats in line_stats.items():
-        df_line.at[idx, "sim_load"] = stats["sim_load"]
-        peak_load = stats["peak_load"]
-        if peak_load > 0:
-            df_line.at[idx, "sim_factor_cumulated"] = stats["sim_load"] / peak_load
-        else:
-            df_line.at[idx, "sim_factor_cumulated"] = 0.0
+    def write(category_totals: Dict[str, Tuple[Dict[Any, float], Dict[Any, float]]] | None = None) -> pd.DataFrame:
+        df_line["sim_load"] = pd.Series(sim_load, dtype=float)
+        df_line["sim_factor_cumulated"] = pd.Series(sim_factor_cumulated, dtype=float)
+        for category_name, (numbers, loads_mw) in (category_totals or {}).items():
+            df_line[f"no_{category_name}"] = pd.Series(numbers, dtype=float)
+            df_line[f"load_{category_name}_mw"] = pd.Series(loads_mw, dtype=float)
+        return df_line
 
     try:
         resolved_root_bus = net_metrics.resolve_synthetic_root_bus(net) if root_bus is None else root_bus
     except ValueError:
         logger.debug("Could not resolve a synthetic root bus; returning seeded line simultaneity only.")
-        return df_line
+        return write()
 
     if resolved_root_bus not in graph:
         logger.debug(
             "Synthetic root bus %s is not present in the topology graph; returning seeded line simultaneity only.",
             resolved_root_bus,
         )
-        return df_line
+        return write()
 
     graph_distances = nx.shortest_path_length(graph, source=resolved_root_bus)
     # Process buses from the leaves upward so child-line totals are available
@@ -251,23 +245,14 @@ def _line_table_with_simultaneity(
     # Category-specific totals are kept separately because simultaneity factors
     # differ between Residential, Commercial, and Public loads.
     category_names = ["Commercial", "Public", "Residential"]
-    for category_name in category_names:
-        df_line[f"no_{category_name}"] = 0
-        df_line[f"load_{category_name}_mw"] = 0.0
-
-    for _, row in bus_zone_stats.iterrows():
-        bus_idx = row["bus"]
-        category_name = row["zone"]
-        if category_name not in category_names:
+    number = {name: dict.fromkeys(df_line.index, 0.0) for name in category_names}
+    load_mw = {name: dict.fromkeys(df_line.index, 0.0) for name in category_names}
+    for bus_idx, category_name, count, peak in stats_rows:
+        line_idx = first_line_of_bus.get(bus_idx)
+        if category_name not in category_names or line_idx is None:
             continue
-
-        incident_lines = df_line[(df_line["from_bus"] == bus_idx) | (df_line["to_bus"] == bus_idx)]
-        if incident_lines.empty:
-            continue
-
-        line_idx = incident_lines.index[0]
-        df_line.at[line_idx, f"no_{category_name}"] += row["count"]
-        df_line.at[line_idx, f"load_{category_name}_mw"] += row["max_p_mw"]
+        number[category_name][line_idx] += count
+        load_mw[category_name][line_idx] += peak
 
     for bus_idx in buses_by_reverse_distance:
         if bus_idx == resolved_root_bus:
@@ -284,46 +269,33 @@ def _line_table_with_simultaneity(
         if parent_bus is None:
             continue
 
-        upstream_line_mask = ((df_line["from_bus"] == parent_bus) & (df_line["to_bus"] == bus_idx)) | \
-                             ((df_line["from_bus"] == bus_idx) & (df_line["to_bus"] == parent_bus))
-        if upstream_line_mask.sum() == 0:
+        upstream_line_idx = first_line_of_pair.get((parent_bus, bus_idx))
+        if upstream_line_idx is None:
             continue
 
-        upstream_line_idx = upstream_line_mask.idxmax()
-
         for child_bus in child_buses:
-            downstream_line_mask = ((df_line["from_bus"] == bus_idx) & (df_line["to_bus"] == child_bus)) | \
-                                   ((df_line["from_bus"] == child_bus) & (df_line["to_bus"] == bus_idx))
-            if downstream_line_mask.sum() == 0:
+            downstream_line_idx = first_line_of_pair.get((bus_idx, child_bus))
+            if downstream_line_idx is None:
                 continue
-
-            downstream_line_idx = downstream_line_mask.idxmax()
             for category_name in category_names:
-                df_line.at[upstream_line_idx, f"no_{category_name}"] += df_line.at[
-                    downstream_line_idx, f"no_{category_name}"
-                ]
-                df_line.at[upstream_line_idx, f"load_{category_name}_mw"] += df_line.at[
-                    downstream_line_idx, f"load_{category_name}_mw"
-                ]
+                number[category_name][upstream_line_idx] += number[category_name][downstream_line_idx]
+                load_mw[category_name][upstream_line_idx] += load_mw[category_name][downstream_line_idx]
 
         total_sim_load = 0.0
         total_peak_load = 0.0
         for category_name in category_names:
-            category_count = df_line.at[upstream_line_idx, f"no_{category_name}"]
-            category_peak_load = df_line.at[upstream_line_idx, f"load_{category_name}_mw"]
+            category_count = number[category_name][upstream_line_idx]
+            category_peak_load = load_mw[category_name][upstream_line_idx]
             sim_factor = SIM_FACTOR.get(category_name, 1.0)
 
             if category_count > 0 and category_peak_load > 0:
                 total_sim_load += utils.category_simultaneous_load(category_peak_load, category_count, sim_factor)
             total_peak_load += category_peak_load
 
-        df_line.at[upstream_line_idx, "sim_load"] = total_sim_load
-        if total_peak_load > 0:
-            df_line.at[upstream_line_idx, "sim_factor_cumulated"] = total_sim_load / total_peak_load
-        else:
-            df_line.at[upstream_line_idx, "sim_factor_cumulated"] = 0.0
+        sim_load[upstream_line_idx] = total_sim_load
+        sim_factor_cumulated[upstream_line_idx] = total_sim_load / total_peak_load if total_peak_load > 0 else 0.0
 
-    return df_line
+    return write({name: (number[name], load_mw[name]) for name in category_names})
 
 
 def _path_impedance_summary(

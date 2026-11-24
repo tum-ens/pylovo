@@ -324,7 +324,11 @@ def average_house_distance(pandapower_net: pp.pandapowerNet) -> float:
 
 
 def _path_lengths(graph: nx.Graph, source: int, targets: List[int]) -> Tuple[float, float]:
-    """Calculate average and maximum weighted path lengths from one source to multiple targets."""
+    """Calculate average and maximum weighted path lengths from one source to multiple targets.
+
+    One single-source Dijkstra gives the distances to every target (the per-target Dijkstra of earlier versions
+    gave the same values, once per consumer).
+    """
     if source not in graph:
         logger.debug(
             "Path-length calculation skipped because source bus %s is absent from the topology graph.",
@@ -332,26 +336,14 @@ def _path_lengths(graph: nx.Graph, source: int, targets: List[int]) -> Tuple[flo
         )
         return 0.0, 0.0
 
-    path_lengths = []
-    skipped_targets = 0
-    for target in targets:
-        if target not in graph:
-            skipped_targets += 1
-            continue
-        try:
-            length = nx.dijkstra_path_length(graph, source, target, weight="weight")
-            path_lengths.append(length)
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
-            skipped_targets += 1
-            continue
-
+    distance = nx.single_source_dijkstra_path_length(graph, source, weight="weight")
+    path_lengths = [distance[target] for target in targets if target in graph and target in distance]
     if not path_lengths:
         if targets:
             logger.debug(
-                "No valid weighted paths found from source %s to %s targets; %s targets were skipped.",
+                "No valid weighted paths found from source %s to any of its %s targets.",
                 source,
                 len(targets),
-                skipped_targets,
             )
         return 0.0, 0.0
 
