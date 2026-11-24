@@ -104,6 +104,16 @@ themselves unless their variables are set (below). The HTTP API has an OpenAPI c
 
    uv run --extra api python api/scripts/export_openapi.py
 
+``tests/test_mv_planner_snapshot.py`` plans three synthetic MV districts with the pure district planner and
+compares the plans with ``tests/mv_planner_snapshot.json``: rings, lines, node roles, repairs, violations, the
+power flow of every case, the station budgets, the HV/MV sizing, the stored net and the metrics. A change of the
+MV planning code that alters them fails this test with a list of the changed values. If the change is intended,
+write the snapshot again and commit it with the change (and a changelog line):
+
+.. code-block:: bash
+
+   PYLOVO_UPDATE_MV_PLANNER_SNAPSHOT=1 uv run pytest tests/test_mv_planner_snapshot.py
+
 Database tests
 ~~~~~~~~~~~~~~
 

@@ -67,6 +67,8 @@ uv run --no-project --python 3.13 --with-requirements docs/requirements.txt sphi
   write the snapshot again (`PYLOVO_UPDATE_TOY_TOWN_SNAPSHOT=1 uv run --extra api --extra plots python
   tests/db/run_database_tests.py -- -k snapshot`) and commit it with the change and a changelog line. If the change
   should not alter the grids, a difference is a bug.
+- `tests/mv_planner_snapshot.json` holds the plans of three synthetic MV districts. The same rule applies; write it
+  again with `PYLOVO_UPDATE_MV_PLANNER_SNAPSHOT=1 uv run pytest tests/test_mv_planner_snapshot.py`.
 - A change of the HTTP API writes `api/openapi.json` again (`uv run --extra api python api/scripts/export_openapi.py`).
 
 ## Dependencies
