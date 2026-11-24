@@ -83,9 +83,20 @@ def assign_clusters(df_parameters: pd.DataFrame, model: dict, algorithm: str = "
         df_parameters: Key figures with the columns of ``model["parameters"]``.
         model: The stored model (:meth:`DatabaseCommunication.save_transformers_with_classification_info`).
         algorithm: ``kmeans`` or ``gmm_tied``.
+
+    Raises:
+        ValueError: If the model has another format than 1 or an unknown transform, the algorithm is unknown, or a
+            key figure of a grid is missing (NaN).
     """
+    if model.get("format") != 1:
+        raise ValueError(f"Unknown format {model.get('format')!r} of the stored model: this pylovo reads format 1.")
+    if algorithm not in ("kmeans", "gmm_tied"):
+        raise ValueError(f"Unknown algorithm {algorithm!r}, use kmeans or gmm_tied.")
     parameters = model["parameters"]
     values = df_parameters[parameters].to_numpy(dtype=float)
+    missing = np.isnan(values).any(axis=0)
+    if missing.any():
+        raise ValueError("Missing key figures (NaN) in: " + ", ".join(np.array(parameters)[missing]))
     transform = model["transform"]
     if "divisors" in transform:
         values = values / np.array([transform["divisors"][name] for name in parameters])
@@ -94,6 +105,8 @@ def assign_clusters(df_parameters: pd.DataFrame, model: dict, algorithm: str = "
                                   for i, name in enumerate(parameters)])
     elif transform["method"] == "log1p":
         values = np.log1p(values)
+    elif transform["method"] != "none":
+        raise ValueError(f"Unknown transform {transform['method']!r} of the stored model.")
     X = (values - np.array(model["scaler"]["mean"])) / np.array(model["scaler"]["scale"])
     fitted = model[algorithm]
     centers = np.array(fitted["means"] if algorithm == "gmm_tied" else fitted["centers"])

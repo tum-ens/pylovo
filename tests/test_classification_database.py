@@ -324,6 +324,25 @@ def test_the_stored_model_reproduces_the_clusters_of_every_grid(monkeypatch, tra
     assert (assign_clusters(df, model, "gmm_tied") == frame["gmm_clusters"].to_numpy()).all()
 
 
+@pytest.mark.parametrize("change, message", [
+    (lambda model, df: model.update(format=2), "Unknown format 2 of the stored model"),
+    (lambda model, df: model["transform"].update(method="rank"), "Unknown transform 'rank' of the stored model"),
+    (lambda model, df: df.__setitem__(PARAMS[0], np.nan), rf"Missing key figures \(NaN\) in: {PARAMS[0]}"),
+])
+def test_a_model_or_grids_that_cannot_be_assigned_raise(monkeypatch, change, message):
+    """An unknown format or transform, or a missing key figure, must not silently place a grid in some cluster."""
+    from pylovo.classification.clustering.clustering_algorithms import assign_clusters
+
+    dc, _, df = prepare_save(monkeypatch)
+    dc.save_transformers_with_classification_info(PARAMS, 4, 3, transform="yeo-johnson")
+    model = json.loads(dc.dbc.sqla_engine.log[3][2]["model"])
+    change(model, df)
+    with pytest.raises(ValueError, match=message):
+        assign_clusters(df, model)
+    with pytest.raises(ValueError, match="Unknown algorithm 'kmedoids'"):
+        assign_clusters(df, {**model, "format": 1}, "kmedoids")
+
+
 def test_a_repeated_step_7_without_values_clusters_with_the_stored_choices(monkeypatch):
     """Repeating step 7 for an older classification must not take the values a later run wrote to the configuration."""
     dc, captured, df = prepare_save(monkeypatch)
