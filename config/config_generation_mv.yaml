@@ -2,7 +2,7 @@
 # MEDIUM-VOLTAGE (MV) GRIDS
 # =============================================================================
 # The MV stage (pylovo-mv, or pylovo-generate --mv) plans the MV grids of a stored LV version. Every LV grid is one MV
-# node at its station, and the MV customers of the LV stage (MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW in
+# node at its station, and the MV customers of the LV generation (MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW in
 # config_generation_lv.yaml) are MV nodes as well; one below 200 kW own peak (a large hall counts one storey) is
 # connected to the busbar of the nearest station within 1 km instead. Each HV/MV substation of OpenStreetMap supplies
 # the nodes nearest to it along the streets. The stage joins these nodes in open rings along the streets, connects

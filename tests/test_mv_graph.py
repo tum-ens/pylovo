@@ -899,6 +899,6 @@ def test_settlement_buildings_are_the_consumers_with_the_auxiliary_class(monkeyp
     graph_id, staged, params = _settlement_build((r"information_schema\.columns", [(True,)]))
     assert "house_number" not in staged and "b.building_use = ANY(%(uses)s)" in staged   # Auxiliary is no use of it
     assert params["settlement_buildings"] == "consumers" and graph_id != address_graph
-    # the address filter of the LV stage keeps the address rule here too
+    # the address filter of the LV generation keeps the address rule here too
     monkeypatch.setattr(mixin_module, "EXCLUDE_BUILDINGS_WITHOUT_ADDRESS", True)
     assert _settlement_build((r"information_schema\.columns", [(True,)]))[0] == address_graph

@@ -904,7 +904,7 @@ def test_the_budget_drop_carries_the_busbar_customers_as_the_design_point_check(
     """The analytic transformer drop (station_budgets) agrees with couple's design-point check, which adds the
     station-busbar customers at the LV busbar of the station transformer."""
     net, lv_ref = _lv_station_net(lv_kva, own_kw), 0.96
-    lo, hi = 0.9, 1.2                    # r: the MV voltage that puts LVbus 1 at lv_ref at tap 0 (the LV stage)
+    lo, hi = 0.9, 1.2                    # r: the MV voltage that puts LVbus 1 at lv_ref at tap 0 (the LV generation)
     for _ in range(40):
         net.ext_grid["vm_pu"] = mid = 0.5 * (lo + hi)
         pp.runpp(net)

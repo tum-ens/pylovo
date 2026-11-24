@@ -3,7 +3,7 @@ Medium-voltage grids
 
 The MV stage connects the stations of a generated LV version to the HV/MV substations of its region
 with medium-voltage (MV) grids. Every LV grid of the version becomes one MV node at its station.
-The large non-residential consumers that the LV stage leaves to the MV grid (MV customers)
+The large non-residential consumers that the LV generation leaves to the MV grid (MV customers)
 are added as further nodes. The stage plans open rings along the streets, sizes the lines and the
 HV/MV transformers and checks the result with pandapower power flows for the peak load and the
 (n-1) cases. It reads the stored LV results and never changes the LV grids. Its parameters belong
@@ -118,7 +118,7 @@ positions alike.
 
 The load of a station is not one number but its load statistics: the summed installed peak and the
 number of load units per consumer category (Residential, Commercial, Public, Unknown) of all
-building components of its LV grid (:doc:`grid_dimensioning`). Components that the LV stage left to
+building components of its LV grid (:doc:`grid_dimensioning`). Components that the LV generation left to
 the MV grid are not part of them.
 
 Coincident load
@@ -141,7 +141,7 @@ law is not monotonic in the non-residential terms (:doc:`grid_dimensioning`), so
 is computed and none is inferred from a neighbouring section.
 
 In the power flows, the coincident load of a feeder is distributed over its stations in proportion
-to their installed load per category, as in the validation snapshot of the LV stage
+to their installed load per category, as in the validation snapshot of the LV generation
 (:ref:`validation-snapshot`). The station loads of a feeder therefore add up to the coincident load
 of the feeder. The normal case uses the half-rings as feeders, the (n-1) cases the whole ring.
 Reactive power follows the power factor of the LV version.
@@ -155,10 +155,10 @@ pylovo derives the non-residential load of a building from its floor area and a 
 m² of its category (:doc:`../user_guide/input_data`). Large consumers are supplied from the MV
 grid. However, a simple threshold gives many MV customers: with a threshold of 200 kW, Dubielzig
 (2022) found 1.2 to 1.9 times as many MV connection points (stations and MV customers) as published
-for four cities, mainly because of the MV customers. Therefore, one threshold in the LV stage and
+for four cities, mainly because of the MV customers. Therefore, one threshold in the LV generation and
 two rules in the MV stage decide which customers become MV nodes:
 
-#. In the LV stage, a non-residential load component above
+#. In the LV generation, a non-residential load component above
    ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` (200 kW installed, the boundary between the MV/LV
    station level and the MV level in eGon-data) leaves the LV grid, and the building is stored in
    ``pylovo.mv_customers``. The technical connection rules of German grid operators give similar
@@ -342,7 +342,7 @@ Regional graph
 ~~~~~~~~~~~~~~
 
 MV cables follow streets and field paths. An MV grid spans many postcodes, so the stage does not use
-the postcode street graphs of the LV stage but the regional street graph of InfDB,
+the postcode street graphs of the LV generation but the regional street graph of InfDB,
 ``<INFDB_SOURCE_SCHEMA>.ways_per_junction`` (street segments split at junctions). The graph is
 built once in the database and stored in ``pylovo.mv_graph``, ``mv_graph_vertex``,
 ``mv_graph_edge`` and ``mv_graph_settlement``:
@@ -591,7 +591,7 @@ no such cables, so the stage adds normally-open links after the ties:
    pairs are again taken in the order of their length, and every node still takes at most one
    link.
 
-The reach follows the settlement type of the PLZ, which the LV stage determines from the households
+The reach follows the settlement type of the PLZ, which the LV generation determines from the households
 per building and the distance between houses (``link_max_length_m``):
 
 .. list-table::
@@ -727,7 +727,7 @@ Design net and cases
 ~~~~~~~~~~~~~~~~~~~~
 
 Every supply area is checked with pandapower. The MV net is built directly, because the electrical
-backend of the LV stage is fixed to 20/0.4 kV. The design net has an ideal slack at the MV busbar
+backend of the LV generation is fixed to 20/0.4 kV. The design net has an ideal slack at the MV busbar
 at ``busbar_vm_pu`` (1.02 p.u.), the setpoint of the on-load tap changer (OLTC) of the HV/MV
 transformers (Harnisch et al. 2016: 102.5 ± 1.5 %, Wintzek et al. 2021: 102 ± 2 %). Stations and
 MV customers are loads. With an ideal busbar the rings are electrically independent, so the (n-1)
@@ -817,7 +817,7 @@ types only overhead lines can grow; the cables then get parallel cables.
    * - A case does not converge (Newton-Raphson, then Iwamoto-damped Newton-Raphson)
      - Report, the topology is kept.
 
-A supply area is stored with its remaining violations, as the LV stage stores its grids, and
+A supply area is stored with its remaining violations, as the LV generation stores its grids, and
 ``mv_grid.power_flow_status`` is ``converged``, ``voltage_violation``, ``loading_violation`` or
 ``not_converged``. The repair actions are kept in ``mv_grid.repairs`` (``upgrade`` with the new
 types, ``parallel``, ``move_nop``, ``split_ring``). After a split, the parallel cables and larger
@@ -914,7 +914,7 @@ OSM completeness
 After the supply areas are planned, the stage reports how complete the OSM power layer of the region
 is (``mv_variant.summary['osm_coverage']`` and one summary line), after the land-use comparison of
 Babli et al. (2025). The planning never reads it. It shows how far the OSM-based parts can be
-trusted: the overhead lines on OSM corridors and the brownfield stations of the LV stage.
+trusted: the overhead lines on OSM corridors and the brownfield stations of the LV generation.
 
 * **Mapped MV/LV station sites**: ``power=substation`` features that are no site of a higher level
   (no voltage above 30 kV; not transmission, traction, converter, generation or compensation; a
@@ -953,7 +953,7 @@ Limitations
 * The non-residential loads are area-based: floor areas times specific peaks per m² of the LV
   stage. Large sites can dominate dense supply areas and fill their substations, and the hall rule
   and the station-busbar customers reduce this effect only in part. Non-residential buildings that
-  contain a transformer candidate are removed by the LV stage before loads exist and never become
+  contain a transformer candidate are removed by the LV generation before loads exist and never become
   MV customers.
 * The checks use three snapshot cases (the peak load and both (n-1) directions) and no time series.
 * One cable and one overhead type are planned per voltage. The repair loop upgrades conductors up

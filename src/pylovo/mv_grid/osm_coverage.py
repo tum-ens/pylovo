@@ -3,7 +3,7 @@ OpenStreetMap maps, against the stations of an MV variant, per settlement class 
 
 A diagnostic of the input data, not of the plan; the planning never reads it. It shows how far the OSM-based parts of
 the stage can be trusted in a region: the overhead lines on OSM corridors and the
-brownfield station candidates of the LV stage. Babli et al. (2025) compare mapped stations with an estimate per
+brownfield station candidates of the LV generation. Babli et al. (2025) compare mapped stations with an estimate per
 land-use class; here the stations of the variant take the place of the estimate. Against the station sites of two
 DSOs, the ratio of mapped to planned stations per settlement class tracked the true share of mapped
 stations within 2 points where the planned count was right, and overstated it by 5 to 9 points elsewhere.

@@ -91,7 +91,7 @@ Result tables in short
      - Audit rows of load edits made through the HTTP API (:ref:`http-api-load-editing`), with the
        state before each edit for the exact undo. Deleting the grid removes them.
    * - ``mv_customers``
-     - Buildings whose non-residential load the LV stage leaves to the MV grid
+     - Buildings whose non-residential load the LV generation leaves to the MV grid
        (``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), per version and postcode; input of the MV stage.
 
 .. _mv-tables:

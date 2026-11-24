@@ -60,7 +60,7 @@ MV_STAGE_VERSION: int = 15
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
 
-#: Keys of ``link_max_length_m`` by the settlement type of a PLZ (pylovo LV stage: 1 rural, 2 semi-urban, 3 urban).
+#: Keys of ``link_max_length_m`` by the settlement type of a PLZ (pylovo LV generation: 1 rural, 2 semi-urban, 3 urban).
 SETTLEMENT_TYPE_KEYS: dict[int, str] = {1: "rural", 2: "semi_urban", 3: "urban"}
 #: Mappings that also take one number, which then applies to every key (their former single value).
 BROADCAST_MAPPINGS: frozenset[str] = frozenset({"link_max_length_m"})

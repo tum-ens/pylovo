@@ -84,8 +84,8 @@ DESCRIPTIONS = {
                                        "(``transformer_units`` per station).",
     "buildings_result_with_grid": "Regular view: live buildings with kcid, bcid and plz; base geometry is indexed.",
     "mv_customers": "Buildings of a version whose non-residential load is connected directly to MV "
-                    "(``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), written per PLZ by the LV stage; the residential "
-                    "part of a mixed building stays in its LV grid.",
+                    "(``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), written per PLZ by the LV generation; the "
+                    "residential part of a mixed building stays in its LV grid.",
     "mv_graph": "One row per MV routing graph built from the regional street graph of InfDB, content-addressed by "
                 "``graph_id``, with its build parameters and QA figures. Not versioned.",
     "mv_graph_vertex": "Vertices of an MV routing graph with their degree and connected component.",

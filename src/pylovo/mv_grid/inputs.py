@@ -216,7 +216,7 @@ def station_table(stations: pd.DataFrame, stats: pd.DataFrame, lv: "LvVersionPar
 def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvParameters") -> pd.DataFrame:
     """The MV customers as node rows with their MV load, fixed load and connection class.
 
-    **MV load (hall rule).** The LV stage gives a customer ``nonresidential_floor_area x W/m²`` of its category on
+    **MV load (hall rule).** The LV generation gives a customer ``nonresidential_floor_area x W/m²`` of its category on
     the gross floor area, whose storeys the building data derive from the height, so large single-storey halls
     count several storeys. A building with a footprint of at least ``customer_hall_min_footprint_m2`` (None: no
     hall rule) is a hall: its floor area for the MV load is one storey, ``min(footprint,
@@ -277,7 +277,7 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
                          "(LvVersionParameters.peak_load_per_m2)")
     lv_installed = frame["installed_kw"].astype(float)
     area = _num(frame, "nonresidential_floor_area")
-    if lv.nonresidential_load_model == "load_class":                # the W/m² the LV stage applied
+    if lv.nonresidential_load_model == "load_class":                # the W/m² the LV generation applied
         w_per_m2 = w_per_m2.where(~(area > 0), lv_installed * 1000.0 / area)
     area = area.where(area > 0, lv_installed * 1000.0 / w_per_m2)
     footprint = _num(frame, "footprint_m2")

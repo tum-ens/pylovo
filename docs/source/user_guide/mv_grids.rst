@@ -67,7 +67,7 @@ brownfield stations. It reads the LV parameters it needs from the parameter snap
 ``LV_REFERENCE_VOLTAGE_PU``, ``TRANSFORMER_PLANNING_UTILIZATION`` and ``TRANSFORMER_MAPPING``), never
 from the current configuration. Three properties of the version matter:
 
-* The LV stage stores the MV customers in ``pylovo.mv_customers`` since the MV stage exists. A
+* The LV generation stores the MV customers in ``pylovo.mv_customers`` since the MV stage exists. A
   version generated before has no rows. The stage then takes only the mixed buildings with an
   MV-direct component from ``buildings_result`` (flag ``not_in_mv_customers``), and the pure
   non-residential MV customers are missing. Generate such versions again under a new
@@ -93,7 +93,7 @@ before needs one run of the non-destructive setup, which keeps all grids:
 
 Until every migration is recorded, ``pylovo-generate`` and the ``pylovo-mv`` commands other than
 ``export`` stop with ``PyLovo schema has pending migrations (0009_mv_grids, 0010_mv_display_geometry,
-...); run pylovo-setup first``. The message lists all pending migrations, also those of the LV stage.
+...); run pylovo-setup first``. The message lists all pending migrations, also those of the LV generation.
 Run the setup when no generation is running, because the new foreign keys to ``grid_result`` wait for
 running transactions.
 
@@ -525,7 +525,7 @@ Every result table carries ``version_id`` and ``mv_variant_id`` and is deleted w
    * - ``mv_graph``, ``mv_graph_vertex``, ``mv_graph_edge``, ``mv_graph_settlement``
      - Routing graphs with settlement flags, shared by all variants with the same inputs.
    * - ``mv_customers``
-     - MV customers written by the LV stage (per LV version).
+     - MV customers written by the LV generation (per LV version).
 
 The stage plans loads only: it writes 0 or NULL into the columns about generation (``gen_*_kw``,
 the ``*feed_in*`` columns, ``n_generators``, the node kind and line role ``generator``).

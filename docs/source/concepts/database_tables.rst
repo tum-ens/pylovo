@@ -1705,7 +1705,7 @@ MV stage tables
 ``mv_customers``
 ~~~~~~~~~~~~~~~~
 
-Buildings of a version whose non-residential load is connected directly to MV (``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), written per PLZ by the LV stage; the residential part of a mixed building stays in its LV grid.
+Buildings of a version whose non-residential load is connected directly to MV (``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), written per PLZ by the LV generation; the residential part of a mixed building stays in its LV grid.
 
 Foreign key (version_id) references ``version`` (version_id), ON DELETE CASCADE.
 

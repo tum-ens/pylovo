@@ -405,7 +405,7 @@ def percentage_checks(cur: cursor) -> None:
         ensure_constraint(cur, table, name, f"CHECK ({check})")
 
 
-#: CREATE_QUERIES entries of the MV stage, in foreign-key order: the MV input table of the LV stage,
+#: CREATE_QUERIES entries of the MV stage, in foreign-key order: the MV input table of the LV generation,
 #: the routing graph, the MV result tables and the comparison view.
 MV_GRID_OBJECTS: tuple[str, ...] = (
     "mv_customers", "mv_graph", "mv_graph_vertex", "mv_graph_edge", "mv_graph_settlement", "mv_variant",
