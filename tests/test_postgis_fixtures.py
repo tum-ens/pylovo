@@ -148,6 +148,31 @@ def test_a_transformer_between_two_equally_near_streets_connects_to_the_lower_wa
     ]
 
 
+def test_mv_nodes_attach_to_the_nearest_edge_where_an_exact_distance_is_below_the_box_distance(client):
+    import pandas as pd
+
+    graph = "gfixture_attach"
+    try:
+        client.cur.execute("""INSERT INTO pylovo.mv_graph (graph_id, source_table, ags, snap_tolerance_m,
+                                                           build_parameters, source_fingerprint)
+                              VALUES (%s, 'fixture', ARRAY['1'], 0.25, '{}', 'fixture')""", (graph,))
+        for edge_id, wkt in ((1, "LINESTRING(500 300, 900 300)"), (2, "LINESTRING(500 300, 500 500)")):
+            client.cur.execute("""INSERT INTO pylovo.mv_graph_edge (graph_id, edge_id, source, target, length_m, geom)
+                                  VALUES (%s, %s, 0, 0, ST_Length(ST_GeomFromText(%s)), ST_GeomFromText(%s, 25832))""",
+                               (graph, edge_id, wkt, wkt))
+        # as on a large graph, the nearest-edge search reads the spatial index in distance order
+        client.cur.execute("SET LOCAL enable_seqscan = off; SET LOCAL enable_sort = off")
+        # PostGIS 3.5 computes the distance of (557, 300) to edge 2 as 56.99999999999999, one rounding step below
+        # its index box distance (57): the KNN operator <-> aborts with "index returned tuples in wrong order"
+        attached = client.attach_points(graph, pd.DataFrame({"key": [1, 2, 3], "x": [557.0, 500.0, 520.0],
+                                                             "y": [300.0, 300.0, 400.0]}))
+    finally:
+        client.rollback_changes()
+    assert attached["edge_id"].tolist() == [1, 1, 2]       # at the vertex of both edges the lower edge id
+    assert attached["offset_m"].tolist() == pytest.approx([0.0, 0.0, 20.0])
+    assert attached["fraction"].tolist() == pytest.approx([57 / 400, 0.0, 0.5])
+
+
 
 def test_a_plz_loads_the_connection_lines_of_its_buildings_whatever_postcode_they_are_filed_under(client, monkeypatch):
     import pylovo.infdb.infdb_client as infdb_client

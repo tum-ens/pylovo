@@ -519,15 +519,24 @@ ATTACH_TEMP_SQL = sql.SQL(
 
 # Of equally near edges (a point at a vertex shared by several edges) the lowest edge id wins: otherwise the order of
 # the index scan decides, which changes with the insert order of the graph and with vacuum.
+# Not the KNN operator <->: PostGIS 3.5 aborts its index scan ("index returned tuples in wrong order") when an exact
+# distance comes out one rounding step below the box distance of the index, e.g. for an axis-parallel edge. The
+# nearest edge by box distance (<#>, no recheck) bounds the exact distance of the nearest edge, which is then searched
+# by its exact distance among the edges within that bound.
 ATTACH_SQL = """
     SELECT p.key, e.edge_id, e.component, e.in_settlement, e.settlement_id, e.settlement_urban,
            ST_LineLocatePoint(e.geom, p.geom) AS fraction, ST_Distance(e.geom, p.geom) AS offset_m,
            ST_X(ST_ClosestPoint(e.geom, p.geom)) AS ax, ST_Y(ST_ClosestPoint(e.geom, p.geom)) AS ay
     FROM mv_point_tem p
+    LEFT JOIN LATERAL (SELECT ST_Distance(b.geom, p.geom) AS bound_m
+                       FROM pylovo.mv_graph_edge b
+                       WHERE b.graph_id = %(g)s AND COALESCE(b.klasse, '') <> ALL(%(osm)s)
+                       ORDER BY b.geom <#> p.geom LIMIT 1) b ON true
     LEFT JOIN LATERAL (SELECT e.edge_id, e.component, e.in_settlement, e.settlement_id, e.settlement_urban, e.geom
                        FROM pylovo.mv_graph_edge e
                        WHERE e.graph_id = %(g)s AND COALESCE(e.klasse, '') <> ALL(%(osm)s)
-                       ORDER BY e.geom <-> p.geom, e.edge_id LIMIT 1) e ON true
+                         AND ST_DWithin(e.geom, p.geom, b.bound_m)
+                       ORDER BY ST_Distance(e.geom, p.geom), e.edge_id LIMIT 1) e ON true
     ORDER BY p.key
 """
 
@@ -1063,7 +1072,7 @@ class MvGraphMixin(BaseMixin):
                          dtype=object, name="ags")
 
     def attach_points(self, graph_id: str, points: pd.DataFrame) -> pd.DataFrame:
-        """Attach points to their nearest graph edge (KNN on the GiST index), all in one statement.
+        """Attach points to their nearest graph edge (by exact distance, through the GiST index), all in one statement.
 
         Runs in the current transaction (temporary table ``mv_point_tem`` ``ON COMMIT DROP``); no commit.
 

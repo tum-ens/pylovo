@@ -134,7 +134,7 @@ skipped with the reason otherwise.
    * - ``api/tests`` marked ``requires_db``: regions, results, diagnostics, load editing (writes)
      - ``PYLOVO_API_TEST_DATABASE`` = database name
      - the same
-   * - ``tests/test_postgis_fixtures.py``: SQL of the postcode border and the left-out buildings
+   * - ``tests/test_postgis_fixtures.py``: SQL of the postcode border, the left-out buildings and the attachment of MV nodes
      - ``PYLOVO_FIXTURE_DB`` = libpq connection string
      - an empty database with PostGIS and pgRouting available
    * - ``tests/test_load_classes_db.py``: SQL of the load classes and the connection levels
