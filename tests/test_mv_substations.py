@@ -613,3 +613,35 @@ def test_egon_readers_map_na_to_none_and_fail_without_tables(schemas):
     missing = _client(_egon_responder({}))
     with pytest.raises(MvStageError, match="no eGon-data table egon_hvmv_substation"):
         missing.egon_substations(b"region", 5000)
+
+
+class _Source:
+    """An InfDB source that holds the given tables (``schema.table``)."""
+
+    where = "the test source"
+
+    def __init__(self, tables):
+        self.tables = set(tables)
+
+    def table_exists(self, schema, table):
+        return f"{schema}.{table}" in self.tables
+
+
+REQUIRED_TABLES = ("src_x.ways_per_junction", "src_x.buildings", "osm_x.infrastructure_point",
+                   "osm_x.infrastructure_polygon", "osm_x.tags")
+
+
+def test_the_municipality_areas_are_required_only_with_the_auto_voltage_rule(schemas, monkeypatch):
+    monkeypatch.setattr(source_mixin, "INFDB_SOURCE_SCHEMA", "src_x")
+    client = _client(lambda text, params: [])
+    client.source_reader = lambda: _Source(REQUIRED_TABLES)
+    assert len(client.check_mv_sources()) == 3        # a fixed voltage: only the optional OSM layers are reported
+    with pytest.raises(MvStageError, match=r"needs open_x\.scope in the test source; MV_NOMINAL_VOLTAGE_KV auto "
+                                           r"needs the municipality areas: import them, or set a fixed"):
+        client.check_mv_sources(auto_voltage=True)    # before any work, not in the region step
+    client.source_reader = lambda: _Source((*REQUIRED_TABLES, "open_x.scope"))
+    assert len(client.check_mv_sources(auto_voltage=True)) == 3
+    monkeypatch.setattr(source_mixin, "INFDB_OPENDATA_SCHEMA", "")
+    with pytest.raises(MvStageError, match="set INFDB_OPENDATA_SCHEMA in the .env file"):
+        client.check_mv_sources(auto_voltage=True)
+    assert len(client.check_mv_sources()) == 3

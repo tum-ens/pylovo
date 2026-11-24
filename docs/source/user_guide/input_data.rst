@@ -61,7 +61,8 @@ Buildings, the function ``classify_building_use`` and the street tables are read
 
 The MV stage reads further inputs: the regional street graph
 ``<INFDB_SOURCE_SCHEMA>.ways_per_junction``, the OSM power and land-use layers of
-``INFDB_OSM_SCHEMA`` and, optionally, the eGon-data HV/MV substations
+``INFDB_OSM_SCHEMA``, with ``MV_NOMINAL_VOLTAGE_KV`` auto the municipality polygons
+``<INFDB_OPENDATA_SCHEMA>.scope`` and, optionally, the eGon-data HV/MV substations
 (:ref:`mv-prerequisites`).
 
 Buildings

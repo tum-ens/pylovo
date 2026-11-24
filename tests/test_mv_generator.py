@@ -64,7 +64,8 @@ class FakeDb:
     def ensure_grid_persistence_schema(self):
         self._call("schema")
 
-    def check_mv_sources(self):
+    def check_mv_sources(self, auto_voltage=False):
+        self._call("check_mv_sources", auto_voltage)
         return []
 
     def source_reader(self):
@@ -168,6 +169,7 @@ def test_a_new_variant_runs_every_step(run, capsys):
         < names.index("register_variant") < names.index("reset_variant_region") < names.index("region_step") \
         < names.index("districts") < names.index("finish_variant")
     assert ("busy_plz", ([3],)) in db.calls                               # missing PLZ are only try-locked
+    assert ("check_mv_sources", (True,)) in db.calls                      # auto voltage: municipality areas needed
     assert ("register_variant", ([1, 2], "g123", {"n_grids": 2})) in db.calls
     assert ("districts", [(7, 30), (6, 10)]) in db.calls
     assert summary.status == "done" and summary.plz_missing == [3] and summary.plz_used == [1, 2]
@@ -223,7 +225,7 @@ def test_a_locked_variant_is_not_touched(run):
     db = FakeDb(lock=False)
     with pytest.raises(MvStageError, match="another MV run of variant d0 of version mv1 is active"):
         run(db)
-    assert db.names() == ["schema", "lock"] and db.closed
+    assert db.names() == ["schema", "check_mv_sources", "lock"] and db.closed
 
 
 def test_resume_skips_the_region_and_grow_rebuilds_it(run):

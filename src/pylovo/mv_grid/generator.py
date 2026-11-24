@@ -191,7 +191,7 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
     locked = False
     try:
         dbc.ensure_grid_persistence_schema()
-        for message in dbc.check_mv_sources():
+        for message in dbc.check_mv_sources(auto_voltage=params.auto_voltage):
             logger.warning(message)
         logger.info(f"InfDB source data read from {dbc.source_reader().where}")
         if not dbc.try_lock_variant(version_id, variant_id):

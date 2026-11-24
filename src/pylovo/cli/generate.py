@@ -173,7 +173,7 @@ def main(argv: list[str] | None = None):
         try:
             mv_params = MvParameters.from_config()   # resolves the line and transformer types (pandapower)
             with dbc.DatabaseClient() as client:     # the InfDB source tables of the MV stage
-                for message in client.check_mv_sources():
+                for message in client.check_mv_sources(auto_voltage=mv_params.auto_voltage):
                     print(f"MV stage: {message}")
         except (MvStageError, ValueError, psycopg2.Error) as exc:
             print(f"MV stage cannot run: {exc}")

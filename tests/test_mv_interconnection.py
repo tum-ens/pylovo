@@ -735,7 +735,7 @@ class StageDb:
     def try_lock_variant(self, version_id, variant_id):
         return True
 
-    def check_mv_sources(self):
+    def check_mv_sources(self, auto_voltage=False):
         return []
 
     def source_reader(self):

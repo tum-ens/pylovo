@@ -17,7 +17,7 @@ class SourcesFound:
     def __exit__(self, *exc):
         return False
 
-    def check_mv_sources(self):
+    def check_mv_sources(self, auto_voltage=False):
         return []
 
 

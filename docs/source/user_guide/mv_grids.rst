@@ -37,6 +37,10 @@ Prerequisites
    * - Regional street graph of InfDB
      - Routing graph and settlements
      - ``<INFDB_SOURCE_SCHEMA>.ways_per_junction`` and ``.buildings``
+   * - Municipality polygons of InfDB (``MV_NOMINAL_VOLTAGE_KV`` auto)
+     - Installed density per municipality of the voltage rule (:ref:`mv-voltage-level`)
+     - ``<INFDB_OPENDATA_SCHEMA>.scope``; without it a run with ``auto`` stops before it starts, a fixed
+       voltage does not read it
    * - eGon-data HV/MV substations (optional)
      - The eTraGo 110 kV bus of every substation (``pylovo-mv boundary``)
      - Loaded by ``pylovo-setup`` (:ref:`mv-egon-data`)

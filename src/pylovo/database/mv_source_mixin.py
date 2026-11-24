@@ -248,12 +248,17 @@ def _frame(rows: list[tuple], columns: Sequence[str], floats: Sequence[str] = ()
 class MvSourceMixin(BaseMixin):
     """Read the OSM and eGon-data inputs of the MV stage."""
 
-    def check_mv_sources(self) -> list[str]:
+    def check_mv_sources(self, auto_voltage: bool = False) -> list[str]:
         """Check, before any work, that the InfDB source tables of the MV stage exist and may be read.
 
-        Required: the ways and buildings of ``INFDB_SOURCE_SCHEMA`` (routing graph, settlements) and the OSM power
-        features with their tags (HV/MV substations). The OSM land use, MV lines and transformer towers and the
-        municipality areas (``INFDB_OPENDATA_SCHEMA.scope``) are used when they exist.
+        Required: the ways and buildings of ``INFDB_SOURCE_SCHEMA`` (routing graph, settlements), the OSM power
+        features with their tags (HV/MV substations) and, with ``MV_NOMINAL_VOLTAGE_KV`` auto, the municipality areas
+        (``INFDB_OPENDATA_SCHEMA.scope``) of the voltage rule. The OSM land use, MV lines and transformer towers are
+        used when they exist.
+
+        Args:
+            auto_voltage: The variant decides the voltage of each district by the installed density of its
+                municipalities (``MvParameters.auto_voltage``).
 
         Returns:
             One message per missing optional table (for the log).
@@ -269,15 +274,23 @@ class MvSourceMixin(BaseMixin):
         optional = {(INFDB_OSM_SCHEMA, "landuse_polygon"): "MV settlements from address buildings only",
                     (INFDB_OSM_SCHEMA, "infrastructure_line"): "no OSM MV lines, every MV line is a cable, and "
                                                                "no check of the OSM HV lines at the substations",
-                    (INFDB_OSM_SCHEMA, "building_polygon"): "no transformer towers in the OSM coverage report",
-                    (INFDB_OPENDATA_SCHEMA, "scope"): "MV_NOMINAL_VOLTAGE_KV auto finds no municipality areas"}
+                    (INFDB_OSM_SCHEMA, "building_polygon"): "no transformer towers in the OSM coverage report"}
         if not INFDB_SOURCE_SCHEMA or not INFDB_OSM_SCHEMA:
             raise _stage_error("the MV stage reads the InfDB schemas: set INFDB_SOURCE_SCHEMA and "
                                "INFDB_OSM_SCHEMA in the .env file")
+        hint = ""
+        if auto_voltage:
+            hint = ("; MV_NOMINAL_VOLTAGE_KV auto needs the municipality areas: import them, or set a fixed "
+                    "MV_NOMINAL_VOLTAGE_KV")
+            if not INFDB_OPENDATA_SCHEMA:
+                raise _stage_error("the MV stage needs <INFDB_OPENDATA_SCHEMA>.scope: set INFDB_OPENDATA_SCHEMA in "
+                                   "the .env file" + hint)
+            required.append((INFDB_OPENDATA_SCHEMA, "scope"))
         missing = [f"{s}.{t}" for s, t in required if not reader.table_exists(s, t)]
         if missing:
-            raise _stage_error(f"the MV stage needs {', '.join(missing)} in {reader.where}")
-        return [f"no {s or '<INFDB_OPENDATA_SCHEMA>'}.{t} in {reader.where}: {effect}"
+            scope = f"{INFDB_OPENDATA_SCHEMA}.scope" in missing
+            raise _stage_error(f"the MV stage needs {', '.join(missing)} in {reader.where}" + (hint if scope else ""))
+        return [f"no {s}.{t} in {reader.where}: {effect}"
                 for (s, t), effect in optional.items() if not reader.table_exists(s, t)]
 
     def _osm_srid(self, table: str) -> int:

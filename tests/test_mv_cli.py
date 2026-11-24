@@ -41,7 +41,7 @@ class _SourceClient:
     def __init__(self, error: Exception | None = None, messages: tuple[str, ...] = ()):
         self.error, self.messages, self.closed = error, list(messages), False
 
-    def check_mv_sources(self):
+    def check_mv_sources(self, auto_voltage=False):
         if self.error is not None:
             raise self.error
         return self.messages
