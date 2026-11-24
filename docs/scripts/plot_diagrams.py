@@ -126,7 +126,7 @@ def architecture() -> None:
         ]),
         ("Workflows", [
             ("GridGenerator", "lv_grid/: LV pipeline\nper postcode, one class per step"),
-            ("MV stage", "mv_grid/: rings, lines, HV/MV\ntransformers, coupling"),
+            ("MV stage", "mv_grid/: run control, region step,\npure district planner, coupling"),
             ("Load editing", "load_editing.py: manual load\nedits with exact undo"),
             ("ParameterCalculator", "analysis/: postcode and\nper-grid key figures"),
             ("Classification", "classification/: sample PLZ,\ncluster grids into types"),

@@ -36,7 +36,8 @@ Project layout
    |   |-- electrical_backend/   backend interface, pandapower and OpenDSS
    |   |-- lv_grid/              LV grid generation: GridGenerator (run control), one class per step,
    |   |                         supply-area rules, feeder planning, CableInstaller
-   |   |-- mv_grid/              MV stage on a stored LV version (pylovo-mv)
+   |   |-- mv_grid/              MV stage on a stored LV version (pylovo-mv): generator (run control), region
+   |   |                         step, pure district planner, topology, electrical checks, repair, ties, coupling
    |   |-- classification/       grid classification (pylovo-classify)
    |   |-- analysis/             key figures, coverage and border diagnostics, MV validation, power-flow helpers
    |   |-- plotting/             plots and GIS export

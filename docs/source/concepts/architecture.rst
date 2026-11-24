@@ -87,10 +87,17 @@ stage carry ``mv`` in their name (``mv_result_mixin.py``, ``mv_validation.py``, 
        resolution.
    * - :mod:`pylovo.mv_grid`
      - The MV stage (:doc:`mv_grids`): parameters (:mod:`~pylovo.mv_grid.options`,
-       :mod:`~pylovo.mv_grid.parameters`), the run control :func:`~pylovo.mv_grid.generator.run_mv_stage`
-       and the pure planning modules (substations, supply areas, routing graph, rings, solvers,
-       topology, electrical checks, ties, coupling, metrics). The planner
-       :func:`~pylovo.mv_grid.planner.plan_district` runs without a database.
+       :mod:`~pylovo.mv_grid.parameters`), the run control and its steps, and the pure planning modules
+       (substations, supply areas, routing graph, rings, solvers, topology, electrical checks, repair,
+       ties, coupling, metrics).
+   * - :mod:`pylovo.mv_grid.generator`
+     - :func:`~pylovo.mv_grid.generator.run_mv_stage`: control of an MV run for one variant of an LV
+       version (lock, variant, the region step of :mod:`~pylovo.mv_grid.preparation`, the district
+       workers, the steps after the districts of :mod:`~pylovo.mv_grid.post_steps`, summary).
+   * - :mod:`pylovo.mv_grid.planner`
+     - :func:`~pylovo.mv_grid.planner.plan_district`: the plan of one supply district from its input
+       (:mod:`~pylovo.mv_grid.district_input`), composed of the pure planning modules; it runs without
+       a database.
    * - :mod:`pylovo.load_editing`
      - Manual load edits of a stored grid (households, floor areas, non-residential use): it
        recomputes the loads and the validation power flow with the stored parameters of the
@@ -110,6 +117,63 @@ stage carry ``mv`` in their name (``mv_result_mixin.py``, ``mv_validation.py``, 
    * - ``ways_preprocessing_functions/``
      - SQL functions installed by the setup: segmenting intersecting streets and creating
        building and transformer connection lines.
+
+LV and MV modules
+~~~~~~~~~~~~~~~~~
+
+The table lists the module of each package per job. The run control and the input step have the same names in
+both packages (``generator``, ``preparation``); the other MV modules are named after their own method or the MV
+terms (the supply area of an HV/MV substation is a district). The packages differ in where they compute: an LV
+step works on the temporary tables of one postcode through the database client, so the LV steps are classes on a
+shared :class:`~pylovo.lv_grid.context.GenerationContext`. The MV stage reads a district from the database once
+and plans it in memory with pure functions, so the district planner
+(:func:`~pylovo.mv_grid.planner.plan_district`) runs without a database.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 34 42
+   :class: fixed-table
+
+   * - Job
+     - LV (:mod:`pylovo.lv_grid`)
+     - MV (:mod:`pylovo.mv_grid`)
+   * - Run control and worker processes
+     - :mod:`~pylovo.lv_grid.generator` (:class:`~pylovo.lv_grid.generator.GridGenerator`)
+     - :mod:`~pylovo.mv_grid.generator` (:func:`~pylovo.mv_grid.generator.run_mv_stage`)
+   * - Input step
+     - :mod:`~pylovo.lv_grid.preparation` (one postcode)
+     - :mod:`~pylovo.mv_grid.preparation` (the region of a variant)
+   * - What the steps share
+     - :mod:`~pylovo.lv_grid.context` (database client, temporary tables)
+     - :mod:`~pylovo.mv_grid.runtime` (database client, loggers, worker count);
+       :class:`~pylovo.mv_grid.topology.DistrictContext` (the arrays of one district)
+   * - Supply areas
+     - :mod:`~pylovo.lv_grid.street_clusters`, :mod:`~pylovo.lv_grid.station_planning`,
+       :mod:`~pylovo.lv_grid.greenfield_areas`, :mod:`~pylovo.lv_grid.supply_areas`
+     - :mod:`~pylovo.mv_grid.districts`
+   * - Input and planning of one grid
+     - :mod:`~pylovo.lv_grid.network_builder`
+     - :mod:`~pylovo.mv_grid.district_input`, :mod:`~pylovo.mv_grid.planner`
+   * - Network layout
+     - :mod:`~pylovo.lv_grid.feeder_planning`
+     - :mod:`~pylovo.mv_grid.topology`, :mod:`~pylovo.mv_grid.network`, :mod:`~pylovo.mv_grid.routing`,
+       :mod:`~pylovo.mv_grid.rings`, :mod:`~pylovo.mv_grid.solvers`
+   * - Electrical build and check
+     - :mod:`~pylovo.lv_grid.cable_installer`
+     - :mod:`~pylovo.mv_grid.electrical`, :mod:`~pylovo.mv_grid.equipment`
+   * - Repair
+     - :mod:`~pylovo.lv_grid.voltage_repair`
+     - :mod:`~pylovo.mv_grid.repair`
+   * - Storage of a grid
+     - :mod:`~pylovo.lv_grid.grid_storage`
+     - :meth:`MvResultMixin.save_district <pylovo.database.mv_result_mixin.MvResultMixin.save_district>`
+   * - After all grids
+     - none
+     - :mod:`~pylovo.mv_grid.post_steps` with :mod:`~pylovo.mv_grid.interconnection` (ties and links),
+       :mod:`~pylovo.mv_grid.display` and :mod:`~pylovo.mv_grid.osm_coverage`
+   * - Export of a stored grid
+     - :mod:`pylovo.cli.export` (``pylovo-export``, CSV for QGIS)
+     - :mod:`~pylovo.mv_grid.export` (``pylovo-mv export``, pandapower JSON)
 
 Database access
 ---------------

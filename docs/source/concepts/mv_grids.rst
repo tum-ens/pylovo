@@ -45,6 +45,13 @@ For one MV variant of an LV version, :func:`~pylovo.mv_grid.generator.run_mv_sta
 The command ``pylovo-mv couple`` can afterwards solve the MV grids together with the stored LV
 grids (:ref:`mv-coupling`).
 
+In the code, :mod:`~pylovo.mv_grid.generator` controls the run and builds or reuses the routing graph;
+:mod:`~pylovo.mv_grid.preparation` reads the nodes, selects the substations and forms the supply areas (the region
+step); each worker reads its supply area with :mod:`~pylovo.mv_grid.district_input` and plans it with the pure
+:func:`~pylovo.mv_grid.planner.plan_district` (:mod:`~pylovo.mv_grid.topology`, :mod:`~pylovo.mv_grid.electrical`,
+:mod:`~pylovo.mv_grid.repair`); :mod:`~pylovo.mv_grid.post_steps` adds the ties, the links and the reports of the
+summary. :doc:`architecture` maps these modules to those of the LV generation.
+
 Terms
 -----
 
