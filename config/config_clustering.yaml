@@ -1,17 +1,19 @@
-# Clustering parameters and numbers of clusters: the automatic choice of classification 2 (2026-10-30, the 501
-# Bavarian PLZ of classification 1, LV version 1, 26,049 grids after the filters, key figures version 2, Yeo-Johnson
-# transform). pylovo-classify --auto computes them for every run and writes them here; the values below matter for
-# manual runs and for classifications without stored choices. Caveats of its selection report:
-# - the 3rd eigenvalue is 1.086 (bootstrap 1.04 to 1.14), just above the Kaiser cut-off of 1;
-# - max_trafo_dis leads avg_trafo_dis by a loading of 0.004; either is defensible (all 100 resamples pick max_trafo_dis);
-# - k-means: the CH index prefers 4, 5 and 6 lie within 2 %, the DB index prefers 7; 72 % of the resamples give 4;
-# - GMM tied: the CH index gives 6 (99 % of the resamples), the DB index prefers 7.
+# Clustering parameters and numbers of clusters: the automatic choice of classification 3 (2026-11-23, every generated
+# PLZ of LV version 2, all of Bavaria and a sample of North Rhine-Westphalia, 104,422 grids after the filters, key
+# figures version 2, median-yeo-johnson transform). pylovo-classify --auto computes them for every run and writes them
+# here; the values below matter for manual runs and for classifications without stored choices. Caveats of its
+# selection report:
+# - the 3rd eigenvalue is 0.961 (bootstrap 0.946 to 0.983), just below the Kaiser cut-off of 1;
+# - max_household_equ_of_a_branch leads no_household_equ_per_branch by a loading of 0.024, max_trafo_dis leads
+#   max_route_resistance_ohm by 0.007; either is defensible (all 100 resamples pick the same two);
+# - k-means: the CH index prefers 5, 3 and 7 lie within 2 %, the DB index prefers 3; 56 % of the resamples give 5,
+#   44 % give 3;
+# - GMM tied: the CH and the DB index give 3 (80 % and 98 % of the resamples), 4 lies within 2 %.
 LIST_OF_CLUSTERING_PARAMETERS:
-- no_house_connections
-- no_household_equ_per_branch
+- max_household_equ_of_a_branch
 - max_trafo_dis
-N_CLUSTERS_KMEANS: 4
-N_CLUSTERS_GMM: 6
+N_CLUSTERS_KMEANS: 5
+N_CLUSTERS_GMM: 3
 # Transform of the key figures before the factor analysis and the clustering: median-yeo-johnson (every key figure
 # divided by its median, then one power transform per key figure against their long tails; free of the units),
 # yeo-johnson (the power transform in the unit of the figure, classification 2), log1p (log(1 + x) in the unit of the
@@ -25,14 +27,15 @@ EXCLUDE_INFEASIBLE: true
 # Upper limits, always applied
 THRESHOLD_MAX_TRAFO_DIS: 2.5
 THRESHOLD_HOUSEHOLDS_PER_BUILDING: 150
-# Lower limits of the additional filtering: the means of k-means cluster 0 of classification 2, the small filling
-# grids (median 6 buildings). A grid below any of them is filtered: 31 % of the grids of classification 2, among them
-# 90 % of cluster 0 and 41 % of the long rural grids (the values of May 2025 filtered 61 %). Re-derive them with:
+# Lower limits of the additional filtering: the means of k-means cluster 0 of classification 3, the small filling
+# grids (median 5 buildings). A grid below any of them is filtered: 26 % of the grids of classification 3, among them
+# 87 % of cluster 0 and 34 % of the long rural grids (the limits of classification 2 would filter 32 %). Re-derive
+# them with:
 # python -m pylovo.classification.utils.get_average_values_clustering_parameters --classification-id <id>
-THRESHOLD_AVG_TRAFO_DIS: 0.071
-THRESHOLD_NO_HOUSE_CONNECTIONS: 6.763
-THRESHOLD_VSW_PER_BRANCH: 0.087
-THRESHOLD_NO_HOUSEHOLDS: 12.012
+THRESHOLD_AVG_TRAFO_DIS: 0.064
+THRESHOLD_NO_HOUSE_CONNECTIONS: 6.032
+THRESHOLD_VSW_PER_BRANCH: 0.06
+THRESHOLD_NO_HOUSEHOLDS: 8.911
 CLUSTERING_PARAMETERS:
 - version_id
 - plz

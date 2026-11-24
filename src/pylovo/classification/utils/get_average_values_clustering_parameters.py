@@ -33,8 +33,9 @@ def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None
     - vsw_per_branch
     - no_households
 
-    The shipped values (0.071, 6.763, 0.087 and 12.012) come from classification 2 of 501 Bavarian postcodes
-    (2026-10-30, key figures version 2), whose cluster 0 holds the small filling grids (median 6 buildings).
+    The shipped values (0.064, 6.032, 0.06 and 8.911) come from classification 3 of all 2,244 generated postcodes of
+    grid version 2 (2026-11-23, key figures version 2), whose cluster 0 holds the small filling grids (median 5
+    buildings).
     Cluster 0 depends on the clustering parameters and the number of clusters: check that it holds the small grids
     before you use its means. With other choices it can be a cluster of long rural grids, whose means would filter
     most of the grids (see the classification user guide).

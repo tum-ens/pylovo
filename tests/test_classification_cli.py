@@ -275,13 +275,14 @@ def test_the_shipped_config_keeps_its_comments_when_the_three_values_and_the_fil
     path = config_copy / "config_clustering.yaml"
     before = path.read_text()
     data = cl.load_yaml(path)
-    data.update(LIST_OF_CLUSTERING_PARAMETERS=["no_branches", "avg_trafo_dis"], N_CLUSTERS_KMEANS=6, N_CLUSTERS_GMM=3,
-                ADDITIONAL_FILTERING=True)
+    shipped = len(data["LIST_OF_CLUSTERING_PARAMETERS"])
+    written = ["no_branches", "avg_trafo_dis", "no_households", "vsw_per_branch"][:shipped + 1]
+    data.update(LIST_OF_CLUSTERING_PARAMETERS=written, N_CLUSTERS_KMEANS=6, N_CLUSTERS_GMM=4, ADDITIONAL_FILTERING=True)
     cl.save_yaml(path, data)
     after = path.read_text()
     assert yaml.safe_load(after) == data
     assert [line for line in after.splitlines() if line.startswith("#")] == [line for line in before.splitlines() if line.startswith("#")]
-    assert after.count("\n") == before.count("\n") - 1, "one list item fewer, nothing else"
+    assert after.count("\n") == before.count("\n") + 1, "one list item more, nothing else"
 
 
 # ---------------------------------------------------------------------------------------- scripted runs

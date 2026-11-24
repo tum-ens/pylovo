@@ -148,8 +148,8 @@ it writes and keeps the comments and everything else in the file.
    * - ``THRESHOLD_AVG_TRAFO_DIS``, ``THRESHOLD_NO_HOUSE_CONNECTIONS``, ``THRESHOLD_VSW_PER_BRANCH``,
        ``THRESHOLD_NO_HOUSEHOLDS``
      - Lower bounds, applied only with additional filtering. A grid below any of them is filtered. They remove the
-       small filling grids at the edge of a PLZ. The shipped values (0.071, 6.763, 0.087, 12.012) are the means of
-       the four parameters over the small filling grids of a classification of 501 Bavarian PLZ
+       small filling grids at the edge of a PLZ. The shipped values (0.064, 6.032, 0.06, 8.911) are the means of
+       the four parameters over the small filling grids of a classification of all generated PLZ of a version
        (:ref:`classification-thresholds`).
    * - ``CLUSTERING_PARAMETERS``
      - All columns that are read from the database. Leave it unchanged.
@@ -373,9 +373,9 @@ step 7 (``model.transform``). ``yeo-johnson`` without the scaling remains for th
 
 The names are printed and written to ``LIST_OF_CLUSTERING_PARAMETERS``. You can overrule them: the notebook
 ``01_sample_and_key_figures`` shows the correlations and the loadings, and other considerations may decide. The
-shipped list, ``no_house_connections``, ``no_household_equ_per_branch`` and ``max_trafo_dis`` with 4 k-means and 6
-GMM clusters, is the automatic choice of a classification of the 501 Bavarian PLZ of the notebooks; the comment in
-``config_clustering.yaml`` names its close calls. The choice needs enough grids. If the
+shipped list, ``max_household_equ_of_a_branch`` and ``max_trafo_dis`` with 5 k-means and 3 GMM clusters, is the
+automatic choice of a classification of all 2,244 generated PLZ of a grid version (104,422 grids, ``median-yeo-johnson``);
+the comment in ``config_clustering.yaml`` names its close calls. The choice needs enough grids. If the
 factor analysis fails (a very small sample, or a parameter that is the same in every grid), the command stops with a
 message that names the number of grids and parameters: use a larger sample (``N_SAMPLES``) or enter the parameters
 yourself.
@@ -639,14 +639,15 @@ Things to know
 The lower filter thresholds
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The shipped values (0.071, 6.763, 0.087 and 12.012) are the means of ``avg_trafo_dis``, ``no_house_connections``,
-``vsw_per_branch`` and ``no_households`` over k-means cluster 0 of a classification of 501 Bavarian PLZ (2026-10-30,
-key figures version 2, clustered on ``no_house_connections``, ``no_household_equ_per_branch`` and ``max_trafo_dis``
-with k = 4, without additional filtering). Cluster 0 is the cluster whose representative grid has the fewest
-households, here the small filling grids: a median of 6 buildings and 120 m to the farthest one. A grid below any of
-the four means is filtered, which leaves out 31 % of the grids of that classification: 90 % of the small filling
-grids, 41 % of the long rural grids, 22 % of the dense urban grids and none of the large grids. The values of May 2025
-(pylovo 0.3.0 to 1.0.0) would filter 61 % of the same grids, 86 % of the long rural ones among them.
+The shipped values (0.064, 6.032, 0.06 and 8.911) are the means of ``avg_trafo_dis``, ``no_house_connections``,
+``vsw_per_branch`` and ``no_households`` over k-means cluster 0 of a classification of all 2,244 generated PLZ of a
+grid version (2026-11-23, key figures version 2, ``median-yeo-johnson``, clustered on
+``max_household_equ_of_a_branch`` and ``max_trafo_dis`` with k = 5, without additional filtering). Cluster 0 is the
+cluster whose representative grid has the fewest households, here the small filling grids: a median of 5 buildings
+and 100 m to the farthest one. A grid below any of the four means is filtered, which leaves out 26 % of the grids of
+that classification: 87 % of the small filling grids, 34 % of the long rural grids, 16 % and 7 % of the two clusters of
+medium and dense grids and almost none of the large grids. The values of the earlier classification of 501 Bavarian
+PLZ (0.071, 6.763, 0.087 and 12.012) would filter 32 % of the same grids, 45 % of the long rural ones among them.
 
 To derive them from another classification, run the helper on it:
 
