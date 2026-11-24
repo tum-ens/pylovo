@@ -18,7 +18,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 from sklearn.mixture import GaussianMixture
 
-from pylovo.classification.clustering.clustering_algorithms import scaled_key_figures
+from pylovo.classification.clustering.clustering_algorithms import GMM_SETTINGS, KMEANS_SETTINGS, scaled_key_figures
 from pylovo.classification.clustering.get_parameters_for_clustering import (
     bartlett_sphericity,
     candidate_eigenvalues,
@@ -27,7 +27,7 @@ from pylovo.classification.clustering.get_parameters_for_clustering import (
 )
 from pylovo.classification.clustering.transform import transform_key_figures
 from pylovo.classification.database_communication.database_communication import DatabaseCommunication
-from pylovo.config_loader import NO_OF_CLUSTERS_ALLOWED, SELECTION_BOOTSTRAP
+from pylovo.config_loader import NO_OF_CLUSTERS_ALLOWED, SELECTION_BOOTSTRAP, TRANSFORM
 from pylovo.plotting.classification import varimax_factor_analysis
 
 #: KMO below this: the candidates are poorly suited for a factor analysis
@@ -45,8 +45,8 @@ CH_NEAR_TIE = 0.02
 
 #: The two algorithms of step 7 with their seeds (as in ``clustering_algorithms`` and the CH curves)
 ALGORITHMS = {
-    "kmeans": lambda k: KMeans(n_clusters=k, random_state=0, n_init=10),
-    "gmm_tied": lambda k: GaussianMixture(n_components=k, covariance_type="tied", random_state=1, n_init=5),
+    "kmeans": lambda k: KMeans(n_clusters=k, **KMEANS_SETTINGS),
+    "gmm_tied": lambda k: GaussianMixture(n_components=k, covariance_type="tied", **GMM_SETTINGS),
 }
 
 
@@ -93,7 +93,7 @@ def _shares(values) -> dict[str, float]:
 
 
 def selection_report(df_parameters: pd.DataFrame, list_of_clustering_parameters: list | None = None,
-                     transform: str = "yeo-johnson", resamples: int = SELECTION_BOOTSTRAP,
+                     transform: str = TRANSFORM, resamples: int = SELECTION_BOOTSTRAP,
                      no_of_clusters_allowed=NO_OF_CLUSTERS_ALLOWED, seed: int = 0) -> dict:
     """Return the selection report of the grids ``df_parameters``.
 
