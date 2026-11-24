@@ -12,6 +12,14 @@ relations of the InfDB schemas (see :mod:`pylovo.infdb.infdb_client`):
 * ``<INFDB_SOURCE_SCHEMA>.classify_building_use(text)``: the use of an ALKIS building function code,
 * ``<INFDB_OPENDATA_SCHEMA>.postcodes_germany``: the postcode polygons.
 
+``pylovo-mv generate`` reads in addition:
+
+* ``<INFDB_SOURCE_SCHEMA>.ways_per_junction``: the streets split at junctions only (the MV routing graph),
+* ``<INFDB_OSM_SCHEMA>.infrastructure_point``, ``infrastructure_polygon`` and ``tags``: the OSM power features,
+  here the two HV/MV substations of :data:`SUBSTATIONS`,
+* ``<INFDB_OPENDATA_SCHEMA>.scope``: the municipality polygons (``MV_NOMINAL_VOLTAGE_KV`` auto), here one per
+  postcode.
+
 :func:`write_source_data` creates exactly these (the columns pylovo and its API read) and fills them with a
 made-up town: postcode 99001 (a street grid with apartment blocks, mixed buildings with shops, a school, a
 plant large enough for an MV connection, single-family houses, a LoD2 transformer station, a garage and a shed of
@@ -27,6 +35,7 @@ manual station :data:`MANUAL_STATION` with a rated power.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -133,6 +142,13 @@ JUNCTION_CLEARANCE = 25.0  # no building faces a street within this distance of 
 #: Nordweg and Hauptstraße; build_test_database.py adds it before version 5, which uses only the manual positions
 MANUAL_STATION = ("manual/toy-town", (300.0, 475.0), 250)
 
+#: HV/MV substations of the OSM schema (``power=substation``, 110/20 kV): OSM way id, name and local footprint
+#: (x0, y0, x1, y1), one west of the town and one east of the village, each near an end of Hauptstraße
+SUBSTATIONS = [
+    (9001, "Umspannwerk Toy Town", (-70.0, 280.0, -30.0, 320.0)),
+    (9002, "Umspannwerk Toy Village", (1590.0, 260.0, 1630.0, 300.0)),
+]
+
 
 @dataclass(frozen=True)
 class Building:
@@ -229,6 +245,19 @@ def street_segments() -> list[tuple[str, str, tuple[float, float], tuple[float, 
     return segments
 
 
+def junction_segments() -> list[tuple[str, str, tuple[float, float], tuple[float, float]]]:
+    """``(street, klasse, start, end)`` of the streets split at junctions and the postcode border only (the
+    ``ways_per_junction`` of the InfDB, the input of the MV routing graph)."""
+    segments = []
+    for name, klasse, (ax, ay), (bx, by) in STREETS:
+        length = abs(bx - ax) + abs(by - ay)
+        cuts = sorted({0.0, float(length), *_junctions(name)})
+        dx, dy = (bx - ax) / length, (by - ay) / length
+        for t0, t1 in pairwise(cuts):
+            segments.append((name, klasse, (ax + dx * t0, ay + dy * t0), (ax + dx * t1, ay + dy * t1)))
+    return segments
+
+
 def _point(p):
     return f"{X0 + p[0]:.3f} {Y0 + p[1]:.3f}"
 
@@ -271,13 +300,27 @@ CREATE TABLE {od}.postcodes_germany (
 CREATE INDEX ON {src}.buildings (gemeindeschluessel);
 CREATE INDEX ON {src}.ways_per_connection (ags);
 CREATE INDEX ON {src}.connection_lines (ags);
+-- the inputs of the MV stage: the streets split at junctions, the OSM power features with their tags and the
+-- municipality polygons
+CREATE TABLE {src}.ways_per_junction (
+    id bigint PRIMARY KEY, klasse text, objektart text, name text, ags text, changelog_id bigint,
+    geom geometry(LineString, {srid}));
+CREATE INDEX ON {src}.ways_per_junction (ags);
+CREATE SCHEMA {osm};
+CREATE TABLE {osm}.infrastructure_point (
+    osm_id bigint, osm_type text, osm_subtype text, name text, operator text, geom geometry(Point, {srid}));
+CREATE TABLE {osm}.infrastructure_polygon (
+    osm_id bigint, osm_type text, osm_subtype text, name text, operator text, geom geometry(MultiPolygon, {srid}));
+CREATE TABLE {osm}.tags (geom_type char(1), osm_id bigint, tags jsonb);
+CREATE TABLE {od}.scope (ags text PRIMARY KEY, name text, geom geometry(MultiPolygon, {srid}));
 """
 
 
-def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str = "opendata") -> dict:
-    """Create the InfDB source relations in ``source_schema`` and ``opendata_schema`` and fill them.
+def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str = "opendata",
+                      osm_schema: str = "osm") -> dict:
+    """Create the InfDB source relations in ``source_schema``, ``opendata_schema`` and ``osm_schema`` and fill them.
 
-    The source schema must not exist yet; PostGIS must be installed. The tables get the municipality-key
+    The source and OSM schemas must not exist yet; PostGIS must be installed. The tables get the municipality-key
     indexes of the InfDB and are analyzed. Nothing is committed.
 
     Returns:
@@ -286,7 +329,7 @@ def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str
     from psycopg2 import sql
 
     cur.execute(sql.SQL(SOURCE_DDL.replace("{srid}", str(SRID))).format(
-        src=sql.Identifier(source_schema), od=sql.Identifier(opendata_schema)))
+        src=sql.Identifier(source_schema), od=sql.Identifier(opendata_schema), osm=sql.Identifier(osm_schema)))
     table = lambda name, schema=source_schema: sql.Identifier(schema, name)
     population = {plz: 0 for plz in POSTCODES}
     rows, lines = [], []
@@ -323,16 +366,32 @@ def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str
         ways.append((len(ways) + 1, klasse, name, abs(b[0] - a[0]) + abs(b[1] - a[1]), plz, str(AGS[plz]), _line(a, b)))
     cur.executemany(sql.SQL("""INSERT INTO {} (id, klasse, name, length_geo, postcode, ags, geom)
                                VALUES (%s, %s, %s, %s, %s, %s, %s)""").format(table("ways_per_connection")), ways)
+    junctions = [(i, klasse, "Straßenachse", name, str(AGS[_plz_of((a[0] + b[0]) / 2)]), 1, _line(a, b))
+                 for i, (name, klasse, a, b) in enumerate(junction_segments(), start=1)]
+    cur.executemany(sql.SQL("""INSERT INTO {} (id, klasse, objektart, name, ags, changelog_id, geom)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s)""").format(table("ways_per_junction")), junctions)
+    cur.executemany(sql.SQL("""INSERT INTO {} (osm_id, osm_type, osm_subtype, name, operator, geom)
+                               VALUES (%s, 'power', 'substation', %s, 'Toy Grid', %s)""").format(
+        table("infrastructure_polygon", osm_schema)),
+        [(osm_id, name, _box(*box)) for osm_id, name, box in SUBSTATIONS])
+    cur.executemany(sql.SQL("INSERT INTO {} (geom_type, osm_id, tags) VALUES ('W', %s, %s)").format(
+        table("tags", osm_schema)),
+        [(osm_id, json.dumps({"power": "substation", "substation": "distribution", "voltage": "110000;20000",
+                              "name": name, "operator": "Toy Grid"})) for osm_id, name, _ in SUBSTATIONS])
     cur.executemany(sql.SQL("INSERT INTO {} (plz, note, qkm, einwohner, geom) VALUES (%s, %s, %s, %s, %s)").format(
         table("postcodes_germany", opendata_schema)),
         [(plz, f"{plz} {name}", (x1 - x0) * (y1 - y0) / 1e6, population[plz], _box(x0, y0, x1, y1))
          for plz, (name, x0, y0, x1, y1) in POSTCODES.items()])
+    cur.executemany(sql.SQL("INSERT INTO {} (ags, name, geom) VALUES (%s, %s, %s)").format(
+        table("scope", opendata_schema)),
+        [(str(AGS[plz]), name, _box(x0, y0, x1, y1)) for plz, (name, x0, y0, x1, y1) in POSTCODES.items()])
     # planner statistics now, as on a loaded InfDB (the API's coverage engine reads reltuples)
-    cur.execute(sql.SQL("ANALYZE {}, {}, {}, {}").format(
+    cur.execute(sql.SQL("ANALYZE {}, {}, {}, {}, {}, {}, {}, {}").format(
         table("buildings"), table("ways_per_connection"), table("connection_lines"),
-        table("postcodes_germany", opendata_schema)))
+        table("postcodes_germany", opendata_schema), table("ways_per_junction"),
+        table("infrastructure_polygon", osm_schema), table("tags", osm_schema), table("scope", opendata_schema)))
     return {"buildings": len(rows), "connection_lines": len(lines), "street_segments": len(ways),
-            "postcodes": len(POSTCODES)}
+            "junction_segments": len(junctions), "substations": len(SUBSTATIONS), "postcodes": len(POSTCODES)}
 
 
 def write_municipal_register(cur) -> None:

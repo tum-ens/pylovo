@@ -1,11 +1,12 @@
-"""End-to-end smoke test of the LV generation on the toy-town test database (opt-in; only reads).
+"""End-to-end smoke test of the LV generation and the MV stage on the toy-town test database (opt-in; only reads).
 
     uv run --extra api --extra plots python tests/db/run_database_tests.py
 
 Or build the database with ``tests/db/build_test_database.py`` and set ``PYLOVO_TOY_TOWN_DATABASE`` to it (section
 "Database tests" of the development guide); the variable must name the database pylovo's configuration points to.
 
-The key figures of the generated grids are compared with the snapshot ``tests/db/toy_town_results.json``, so a
+The key figures of the generated LV grids and MV variants are compared with the snapshot
+``tests/db/toy_town_results.json``, so a
 change of the results shows up in a test. After an intended change, write the snapshot again and commit it with the
 change and a changelog line::
 
@@ -29,6 +30,8 @@ pytestmark = pytest.mark.skipif(
     not DATABASE, reason="set PYLOVO_TOY_TOWN_DATABASE to the toy-town test database (tests/db/build_test_database.py)")
 #: the versions of tests/db/build_test_database.py
 VERSIONS = ["1", "2", "3", "4", "5"]
+#: the MV variants of tests/db/build_test_database.py (of version 1)
+MV_VARIANTS = ["parallel", "rings", "serial"]
 
 
 @pytest.fixture(scope="module")
@@ -164,6 +167,38 @@ def toy_town_results(q) -> dict:
             SELECT b.version_id, g.plz, count(*), sum(b.peak_load_in_kw)
             FROM pylovo.buildings_result b JOIN pylovo.grid_result g USING (grid_result_id) GROUP BY 1, 2"""):
         entry(version, plz).update(buildings=buildings, peak_load_kw=round(peak, 6))
+    results["mv"] = mv_results(q)
+    return results
+
+
+def mv_results(q) -> dict:
+    """Key figures per MV variant of version 1: the run, the ties and links, per district (by the name of its
+    substation) the structure, the HV/MV sizing and the power flow extremes, and the line length per role, type and
+    number of parallel cables."""
+    results: dict = {}
+    for variant, summary in q("SELECT mv_variant_id, summary FROM pylovo.mv_variant WHERE version_id = '1'"):
+        ties, links = summary.get("ties") or {}, summary.get("links") or {}
+        results[variant] = {
+            "status": summary["status"], "grids_done": summary["grids_done"], "n_stations": summary["n_stations"],
+            "n_customers": summary["n_customers"],
+            "ties": {"n": ties.get("n_ties", 0), "km": round(ties.get("tie_km", 0.0), 6)},
+            "links": {"n": links.get("n_links", 0), "km": round(links.get("link_km", 0.0), 6)}}
+    for variant, name, *figures in q("""
+            SELECT g.mv_variant_id, s.name, g.vn_kv, g.power_flow_status, g.coupled_status, g.n_stations,
+                   g.n_customers, g.n_rings, g.n_stub_nodes, g.n_joints, g.hv_mv_transformers, g.hv_mv_transformer_mva,
+                   g.oltc_tap_pos, g.peak_load_mw, g.circuit_km, g.max_voltage_drop_percent,
+                   g.max_voltage_drop_n1_percent, g.max_line_loading_percent, jsonb_array_length(g.repairs)
+            FROM pylovo.mv_grid g JOIN pylovo.mv_substation s USING (substation_id)
+            WHERE g.version_id = '1'"""):
+        keys = ["vn_kv", "power_flow_status", "coupled_status", "n_stations", "n_customers", "n_rings", "n_stub_nodes",
+                "n_joints", "hv_mv_transformers", "hv_mv_transformer_mva", "oltc_tap_pos", "peak_load_mw", "circuit_km",
+                "max_voltage_drop_percent", "max_voltage_drop_n1_percent", "max_line_loading_percent", "n_repairs"]
+        results[variant].setdefault("districts", {})[name] = {
+            key: round(value, 6) if isinstance(value, float) else value for key, value in zip(keys, figures)}
+    for variant, role, std_type, parallel, km in q("""
+            SELECT mv_variant_id, role, std_type, parallel, sum(length_km) FROM pylovo.mv_line
+            WHERE version_id = '1' GROUP BY 1, 2, 3, 4"""):
+        results[variant].setdefault("line_km", {}).setdefault(role, {})[f"{std_type} x{parallel}"] = round(km, 6)
     return results
 
 
@@ -182,6 +217,33 @@ def test_parallel_workers_give_the_grids_of_the_serial_run(q):
     # version 4 is version 1 generated in worker processes, one per postcode
     results = toy_town_results(q)
     assert differences(results["1"], results["4"]) == []
+
+
+def test_parallel_mv_workers_give_the_districts_of_the_serial_run(q):
+    mv = mv_results(q)
+    assert sorted(mv) == MV_VARIANTS
+    assert all(variant["status"] == "done" for variant in mv.values())
+    assert differences(mv["serial"], mv["parallel"]) == []
+
+
+def test_the_mv_variant_with_small_rings_has_ties_links_and_coupled_districts(q):
+    rings = mv_results(q)["rings"]
+    assert rings["ties"]["n"] > 0 and rings["links"]["n"] > 0
+    assert sorted(rings["line_km"]) == ["link", "ring", "tie"]
+    assert {district["coupled_status"] for district in rings["districts"].values()} == {"done"}
+
+
+@pytest.mark.parametrize("case", ["load", "n1a"])
+def test_a_stored_mv_net_is_exported_and_solves_again(q, tmp_path, case):
+    import pandapower as pp
+
+    from pylovo.mv_grid.stage import export_net
+
+    [(grid,)] = q("SELECT min(mv_grid_id) FROM pylovo.mv_grid WHERE version_id = '1' AND mv_variant_id = 'rings'")
+    net = pp.from_json(str(export_net("1", "rings", grid, tmp_path / f"{case}.json", case=case)))
+    stored = net.res_bus.vm_pu.copy()
+    pp.runpp(net)
+    assert len(stored) == len(net.bus) and (net.res_bus.vm_pu - stored).abs().max() < 1e-6
 
 
 def test_the_results_equal_the_snapshot(q):

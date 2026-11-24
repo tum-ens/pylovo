@@ -128,7 +128,8 @@ skipped with the reason otherwise.
    * - Tests
      - Variable
      - Database
-   * - ``tests/test_toy_town.py``: end-to-end test of the generation, with the result snapshot (reads)
+   * - ``tests/test_toy_town.py``: end-to-end test of the LV generation and the MV stage, with the result snapshot
+       (reads)
      - ``PYLOVO_TOY_TOWN_DATABASE`` = database name
      - the toy-town test database; the name must be the database pylovo's configuration points to
    * - ``api/tests`` marked ``requires_db``: regions, results, diagnostics, load editing (writes)
@@ -151,13 +152,17 @@ apartment blocks, mixed buildings with shops, a school, a plant above the MV-dir
 single-family houses, a LoD2 transformer station, a garage and a farm shed of the InfDB class ``Auxiliary`` (no
 consumers), a weekend house with one household and no residents, a house without address, three residential
 buildings without a household count and a cycle path, the neighbouring village 99002 and 99003, a postcode without
-a polygon. The data are
-synthetic (no geodata files) and lie in the North Sea, far from real buildings and OSM transformers.
+a polygon. For the MV stage it adds the streets split at junctions (``ways_per_junction``), two HV/MV substations
+in the OSM schema, one at each end of the main street, and the municipality polygons (``opendata.scope``). The data
+are synthetic (no geodata files) and lie in the North Sea, far from real buildings and OSM transformers.
 ``tests/db/build_test_database.py`` writes the toy town into an empty database and runs ``pylovo-setup``,
 ``pylovo-generate`` and ``pylovo-analyze --per-grid`` for five versions: ``1`` with the ``config/`` of the
 checkout, ``2`` with the existing transformer positions (``USE_OPEN_TRANSFORMER_POSITIONS``), ``3``
 residential-only, ``4`` as ``1`` in parallel worker processes (it must give the same grids) and ``5`` with
-a manual station of a given rated power (``USE_MANUAL_TRANSFORMER_POSITIONS``). It takes about a minute. The API
+a manual station of a given rated power (``USE_MANUAL_TRANSFORMER_POSITIONS``). On version ``1`` it then plans
+three MV variants with ``pylovo-mv generate``: ``serial`` with the ``config/`` of the checkout, ``parallel`` the
+same in worker processes (it must give the same districts) and ``rings`` with one station per ring and no
+stubs, so that it has ties and links, and couples ``rings`` with its LV grids. It takes about a minute. The API
 tests derive their expectations from this database; they write (a manual transformer, load edits that
 are undone again), but they can be repeated on the same database.
 
@@ -182,7 +187,9 @@ configuration points to, and it refuses a database that already has the ``pylovo
 **The result snapshot.** ``tests/test_toy_town.py`` compares the key figures of the toy-town grids with
 ``tests/db/toy_town_results.json``: per version and postcode the number of grids and of converged grids, the
 transformers per rating, the cable length per type and number of parallel cables, the connected buildings with
-their summed peak load and the largest LV voltage drop. Version ``1`` uses the ``config/`` of the checkout, so a
+their summed peak load and the largest LV voltage drop, and per MV variant the districts with their rings, HV/MV
+transformers and power-flow extremes, the line length per role and type, and the ties and links. Version ``1``
+uses the ``config/`` of the checkout, so a
 change of the code, of the shipped configuration or of the reference data that alters the generated grids fails
 this test with a list of the changed figures. If the change is intended, write the snapshot again and commit it
 with the change (and a changelog line), so that the diff of the file shows the effect on the results:

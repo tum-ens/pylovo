@@ -170,5 +170,196 @@
         "400": 2
       }
     }
+  },
+  "mv": {
+    "parallel": {
+      "districts": {
+        "Umspannwerk Toy Town": {
+          "circuit_km": 2.006,
+          "coupled_status": null,
+          "hv_mv_transformer_mva": 25.0,
+          "hv_mv_transformers": 2,
+          "max_line_loading_percent": 4.860083,
+          "max_voltage_drop_n1_percent": 0.036817,
+          "max_voltage_drop_percent": 0.012133,
+          "n_customers": 1,
+          "n_joints": 1,
+          "n_repairs": 0,
+          "n_rings": 1,
+          "n_stations": 4,
+          "n_stub_nodes": 1,
+          "oltc_tap_pos": -1,
+          "peak_load_mw": 0.846622,
+          "power_flow_status": "converged",
+          "vn_kv": 20.0
+        },
+        "Umspannwerk Toy Village": {
+          "circuit_km": 0.862852,
+          "coupled_status": null,
+          "hv_mv_transformer_mva": 25.0,
+          "hv_mv_transformers": 2,
+          "max_line_loading_percent": 1.209729,
+          "max_voltage_drop_n1_percent": 0.00368,
+          "max_voltage_drop_percent": 0.00368,
+          "n_customers": 0,
+          "n_joints": 1,
+          "n_repairs": 0,
+          "n_rings": 0,
+          "n_stations": 3,
+          "n_stub_nodes": 3,
+          "oltc_tap_pos": -1,
+          "peak_load_mw": 0.176285,
+          "power_flow_status": "converged",
+          "vn_kv": 20.0
+        }
+      },
+      "grids_done": 2,
+      "line_km": {
+        "ring": {
+          "NA2XS2Y 1x240 RM/25 12/20 kV x1": 1.714
+        },
+        "stub": {
+          "NA2XS2Y 1x240 RM/25 12/20 kV x1": 1.154852
+        }
+      },
+      "links": {
+        "km": 0.0,
+        "n": 0
+      },
+      "n_customers": 1,
+      "n_stations": 7,
+      "status": "done",
+      "ties": {
+        "km": 0.0,
+        "n": 0
+      }
+    },
+    "rings": {
+      "districts": {
+        "Umspannwerk Toy Town": {
+          "circuit_km": 3.698,
+          "coupled_status": "done",
+          "hv_mv_transformer_mva": 25.0,
+          "hv_mv_transformers": 2,
+          "max_line_loading_percent": 3.206766,
+          "max_voltage_drop_n1_percent": 0.018323,
+          "max_voltage_drop_percent": 0.007192,
+          "n_customers": 1,
+          "n_joints": 0,
+          "n_repairs": 0,
+          "n_rings": 3,
+          "n_stations": 4,
+          "n_stub_nodes": 0,
+          "oltc_tap_pos": -1,
+          "peak_load_mw": 0.846622,
+          "power_flow_status": "converged",
+          "vn_kv": 20.0
+        },
+        "Umspannwerk Toy Village": {
+          "circuit_km": 2.699407,
+          "coupled_status": "done",
+          "hv_mv_transformer_mva": 25.0,
+          "hv_mv_transformers": 2,
+          "max_line_loading_percent": 0.641917,
+          "max_voltage_drop_n1_percent": 0.002497,
+          "max_voltage_drop_percent": 0.002497,
+          "n_customers": 0,
+          "n_joints": 0,
+          "n_repairs": 0,
+          "n_rings": 2,
+          "n_stations": 3,
+          "n_stub_nodes": 0,
+          "oltc_tap_pos": -1,
+          "peak_load_mw": 0.176285,
+          "power_flow_status": "converged",
+          "vn_kv": 20.0
+        }
+      },
+      "grids_done": 2,
+      "line_km": {
+        "link": {
+          "NA2XS2Y 1x240 RM/25 12/20 kV x1": 0.628
+        },
+        "ring": {
+          "NA2XS2Y 1x240 RM/25 12/20 kV x1": 6.397407
+        },
+        "tie": {
+          "NA2XS2Y 1x240 RM/25 12/20 kV x1": 1.214
+        }
+      },
+      "links": {
+        "km": 0.628,
+        "n": 2
+      },
+      "n_customers": 1,
+      "n_stations": 7,
+      "status": "done",
+      "ties": {
+        "km": 1.214,
+        "n": 2
+      }
+    },
+    "serial": {
+      "districts": {
+        "Umspannwerk Toy Town": {
+          "circuit_km": 2.006,
+          "coupled_status": null,
+          "hv_mv_transformer_mva": 25.0,
+          "hv_mv_transformers": 2,
+          "max_line_loading_percent": 4.860083,
+          "max_voltage_drop_n1_percent": 0.036817,
+          "max_voltage_drop_percent": 0.012133,
+          "n_customers": 1,
+          "n_joints": 1,
+          "n_repairs": 0,
+          "n_rings": 1,
+          "n_stations": 4,
+          "n_stub_nodes": 1,
+          "oltc_tap_pos": -1,
+          "peak_load_mw": 0.846622,
+          "power_flow_status": "converged",
+          "vn_kv": 20.0
+        },
+        "Umspannwerk Toy Village": {
+          "circuit_km": 0.862852,
+          "coupled_status": null,
+          "hv_mv_transformer_mva": 25.0,
+          "hv_mv_transformers": 2,
+          "max_line_loading_percent": 1.209729,
+          "max_voltage_drop_n1_percent": 0.00368,
+          "max_voltage_drop_percent": 0.00368,
+          "n_customers": 0,
+          "n_joints": 1,
+          "n_repairs": 0,
+          "n_rings": 0,
+          "n_stations": 3,
+          "n_stub_nodes": 3,
+          "oltc_tap_pos": -1,
+          "peak_load_mw": 0.176285,
+          "power_flow_status": "converged",
+          "vn_kv": 20.0
+        }
+      },
+      "grids_done": 2,
+      "line_km": {
+        "ring": {
+          "NA2XS2Y 1x240 RM/25 12/20 kV x1": 1.714
+        },
+        "stub": {
+          "NA2XS2Y 1x240 RM/25 12/20 kV x1": 1.154852
+        }
+      },
+      "links": {
+        "km": 0.0,
+        "n": 0
+      },
+      "n_customers": 1,
+      "n_stations": 7,
+      "status": "done",
+      "ties": {
+        "km": 0.0,
+        "n": 0
+      }
+    }
   }
 }

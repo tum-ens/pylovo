@@ -18,7 +18,10 @@ or the InfDB source schema. ``run_database_tests.py`` runs it, and the tests, on
    for the versions of :data:`VERSIONS`: ``1`` with the ``config/`` of the checkout unchanged, ``2`` with
    the open (here: LoD2) transformer positions (brownfield), ``3`` residential-only, ``4`` as ``1`` but in
    parallel worker processes (one per postcode), ``5`` with the manual station of ``toy_town.MANUAL_STATION``
-   (placed with ``add_transformer_position_trafo_ui`` before this version, so version 2 does not use it).
+   (placed with ``add_transformer_position_trafo_ui`` before this version, so version 2 does not use it),
+4. plans the MV variants of version ``1`` (:data:`MV_VARIANTS`): ``serial`` with the ``config/`` of the checkout,
+   ``parallel`` the same in worker processes, and ``rings`` with one station per ring and no stubs, so that
+   it has ties and links; ``rings`` is then coupled with its LV grids (``pylovo-mv couple``).
 
 The commands run in a temporary directory with a copy of ``config/`` (logs and results stay out of the
 checkout), ``PYLOVO_ROOT`` points to the checkout for the reference data in ``data/``. It takes less than
@@ -51,6 +54,13 @@ VERSIONS = {
 PARALLEL_VERSIONS = {"4"}
 #: the version before which the manual station is placed
 MANUAL_STATION_VERSION = "5"
+#: the LV version of the MV variants
+MV_VERSION = "1"
+#: MV variant id -> arguments of ``pylovo-mv generate``; ``parallel`` is ``serial`` in worker processes
+MV_VARIANTS = {"serial": ["--no-parallel"], "parallel": ["--parallel", "--jobs", "2"]}
+#: an MV variant with one station per ring and no stubs (the stub limit is a constant of the MV stage, which
+#: ``--set`` does not take, so it is planned in Python), coupled with its LV grids afterwards
+MV_RINGS_VARIANT = ("rings", {"max_stations_per_ring": 1, "stub_max_kva": 1.0})
 
 
 def _run(command: list[str], cwd: Path, env: dict) -> None:
@@ -81,6 +91,16 @@ def _place_manual_station() -> None:
                                                  transformer_rated_power=rated_power)
 
 
+def _mv_rings_variant_command() -> list[str]:
+    """The Python command that plans :data:`MV_RINGS_VARIANT` as ``pylovo-mv generate --no-parallel`` does."""
+    variant_id, changes = MV_RINGS_VARIANT
+    return [sys.executable, "-c",
+            "from pylovo.mv_grid.parameters import MvParameters; from pylovo.mv_grid.stage import run_mv_stage; "
+            f"params = MvParameters.from_config().replace(variant_id={variant_id!r}, **{changes!r}); "
+            f"summary = run_mv_stage({MV_VERSION!r}, {toy_town.GENERATED_PLZ!r}, params, parallel=False); "
+            "raise SystemExit(summary.status != 'done')"]
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--database", required=True,
@@ -104,7 +124,8 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(f"The database {cl.DBNAME!r} already has the schema(s) {', '.join(existing)}: "
                      "build the test database into an empty database.")
         cur.execute("CREATE EXTENSION IF NOT EXISTS postgis")
-        counts = toy_town.write_source_data(cur, cl.INFDB_SOURCE_SCHEMA, cl.INFDB_OPENDATA_SCHEMA)
+        counts = toy_town.write_source_data(cur, cl.INFDB_SOURCE_SCHEMA, cl.INFDB_OPENDATA_SCHEMA,
+                                            cl.INFDB_OSM_SCHEMA)
     print(f"Toy town written to {cl.HOST}:{cl.PORT}/{cl.DBNAME}: {counts}", flush=True)
 
     import yaml
@@ -127,8 +148,15 @@ def main(argv: list[str] | None = None) -> None:
             parallel = "--parallel" if version_id in PARALLEL_VERSIONS else "--no-parallel"
             _run([_command("pylovo-generate"), "--plz", *plz, parallel, "--no-mv"], project, env)
             _run([_command("pylovo-analyze"), "--plz", *plz, "--per-grid"], project, env)
+        for variant_id, arguments in MV_VARIANTS.items():
+            _run([_command("pylovo-mv"), "generate", "--version", MV_VERSION, "--plz", *plz, "--variant", variant_id,
+                  *arguments], project, env)
+        _run(_mv_rings_variant_command(), project, env)
+        _run([_command("pylovo-mv"), "couple", "--version", MV_VERSION, "--variant", MV_RINGS_VARIANT[0]], project,
+             env)
     conn.close()
-    print(f"Test database {cl.DBNAME!r} is ready (versions {', '.join(VERSIONS)}).")
+    print(f"Test database {cl.DBNAME!r} is ready (versions {', '.join(VERSIONS)}, MV variants "
+          f"{', '.join([*MV_VARIANTS, MV_RINGS_VARIANT[0]])} of version {MV_VERSION}).")
 
 
 if __name__ == "__main__":
