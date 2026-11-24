@@ -3,8 +3,8 @@
 :func:`plan_district` composes the planning modules for one district: the in-memory run graph
 (:mod:`~pylovo.mv_grid.graph`), the distance model and the topology (:mod:`~pylovo.mv_grid.topology`), the ring
 evaluator (:mod:`~pylovo.mv_grid.rings`), the ring solver (:mod:`~pylovo.mv_grid.solvers`), the pandapower cases,
-the repair loop, the HV/MV sizing, the stored net and the station voltage budgets
-(:mod:`~pylovo.mv_grid.electrical`), and the metrics of the generic table format (:mod:`~pylovo.mv_grid.metrics`).
+the HV/MV sizing, the stored net and the station voltage budgets (:mod:`~pylovo.mv_grid.electrical`), the repair
+loop (:mod:`~pylovo.mv_grid.repair`) and the metrics of the generic table format (:mod:`~pylovo.mv_grid.metrics`).
 
 The module is pure: it imports no database, configuration or plotting module. The district's street geometries
 come through the callable :attr:`DistrictInput.edge_geometry <pylovo.mv_grid.model.DistrictInput.edge_geometry>`
@@ -72,8 +72,8 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
         The district plan (deterministic for the same input).
     """
     start = time.perf_counter()
-    graph, topology, rings, solvers, electrical, metrics = (
-        _module(name) for name in ("graph", "topology", "rings", "solvers", "electrical", "metrics"))
+    graph, topology, rings, solvers, electrical, repair, metrics = (
+        _module(name) for name in ("graph", "topology", "rings", "solvers", "electrical", "repair", "metrics"))
     params = inp.params
     rg = graph.build_run_graph(inp.edges, inp.nodes, long_connector_m=params.long_connector_m,
                                bridge_detour=params.bridge_detour, exit_radius_m=params.busbar_exit_radius_m,
@@ -94,7 +94,7 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
         violations = electrical.check(cases, inp, plan)
         if not violations or round_ == params.repair_rounds:
             break
-        plan, actions = electrical.repair(inp, ctx, ev, plan, violations)
+        plan, actions = repair.repair(inp, ctx, ev, plan, violations)
         if not actions:
             break                                                                        # nothing left to repair
         rounds_used += 1

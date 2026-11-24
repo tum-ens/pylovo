@@ -1,10 +1,10 @@
-"""Electrical checks of one MV district with pandapower: design net, snapshot cases, criteria, repair
-loop, HV/MV transformer sizing, stored net with a fixed OLTC tap and the voltage budget of every station.
+"""Electrical checks of one MV district with pandapower: design net, snapshot cases, criteria, HV/MV transformer
+sizing, stored net with a fixed OLTC tap and the voltage budget of every station.
 
 The module builds MV nets directly with pandapower (not through ``IElectricalBackend``, whose transformer specs are
 fixed to 20/0.4 kV). It is pure: it imports no database, configuration or plotting module. The coincidence law and
-the equipment helpers come from :mod:`pylovo.mv_grid.coincidence` and :mod:`pylovo.mv_grid.equipment`; the
-topology changes of the repair loop come from :mod:`pylovo.mv_grid.topology`, imported on first use.
+the equipment helpers come from :mod:`pylovo.mv_grid.coincidence` and :mod:`pylovo.mv_grid.equipment`. The
+repair loop that acts on the violations of :func:`check` is :mod:`pylovo.mv_grid.repair`.
 
 **Nets.** The *design net* (:func:`build_design_net`) has one bus per node key of the plan (the HV/MV busbar first,
 then the nodes of ``DistrictInput.nodes``, then the joints), an ideal slack at the busbar (``busbar_vm_pu``, the
@@ -30,10 +30,8 @@ from __future__ import annotations
 import copy
 import dataclasses
 import functools
-import importlib
 import logging
 import math
-from collections import deque
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -76,16 +74,7 @@ NOT_N1_ROLES: frozenset[str] = frozenset({"stub"})
 N1_SECURE_KINDS: frozenset[str] = frozenset({"ring", "dedicated"})
 
 
-# ---------------------------------------------------------------------------------------------- module access
-def _module(name: str) -> Any:
-    """A sibling module of the MV stage, imported on first use."""
-    return importlib.import_module(f"pylovo.mv_grid.{name}")
-
-
-def _topology() -> Any:
-    return _module("topology")
-
-
+# ---------------------------------------------------------------------------------------------- coordinates
 @functools.lru_cache(maxsize=8)
 def _to_wgs84(epsg: int) -> Any:
     from pyproj import Transformer
@@ -119,12 +108,12 @@ def bus_keys(inp: DistrictInput, plan: TopologyPlan) -> list[int]:
     return keys
 
 
-def _net_lines(plan: TopologyPlan) -> list[LinePlan]:
+def net_lines(plan: TopologyPlan) -> list[LinePlan]:
     """The lines of the design net: every planned line except ties (they never carry flow in the cases)."""
     return [line for line in plan.lines if line.role != "tie"]
 
 
-def _components(keys: Sequence[int], busbar: int, lines: Iterable[LinePlan], include_open: bool) -> dict[int, int]:
+def components(keys: Sequence[int], busbar: int, lines: Iterable[LinePlan], include_open: bool) -> dict[int, int]:
     """Component label per non-busbar key of the line graph without the busbar.
 
     With ``include_open`` False the normally-open lines are left out: the components are the feeders of normal
@@ -149,20 +138,7 @@ def _components(keys: Sequence[int], busbar: int, lines: Iterable[LinePlan], inc
     return {k: int(labels[i]) for k, i in index.items()}
 
 
-def _component_rings(plan: TopologyPlan, components: Mapping[int, int]) -> dict[int, int]:
-    """Ring id per component label, from the lines that carry a ring id (the first one by line key)."""
-    rings: dict[int, int] = {}
-    for line in sorted(plan.lines, key=lambda item: item.key):
-        if line.role == "tie" or line.ring_id is None:
-            continue
-        for key in (line.from_key, line.to_key):
-            label = components.get(int(key))
-            if label is not None:
-                rings.setdefault(label, int(line.ring_id))
-    return rings
-
-
-def _ring_exits(plan: TopologyPlan, busbar: int) -> dict[int, str]:
+def ring_exits(plan: TopologyPlan, busbar: int) -> dict[int, str]:
     """``exit`` per line key: ``a``/``b`` for the busbar sections of rings and the two legs of dedicated feeders.
 
     A line's own ``exit`` is kept. Otherwise a ring's A exit is its busbar line to ``members[0]`` and its B exit
@@ -280,9 +256,9 @@ def node_loads(inp: DistrictInput, plan: TopologyPlan) -> pd.DataFrame:
     load_keys = [k for k in keys[1:] if k in inp.nodes.index and inp.nodes.at[k, "kind"] in ("station", "customer")]
     if not load_keys:
         return pd.DataFrame(columns=columns, index=pd.Index([], name="node_key"), dtype=float)
-    lines = _net_lines(plan)
-    normal = _components(keys, busbar, lines, include_open=False)
-    n1 = _components(keys, busbar, lines, include_open=True)
+    lines = net_lines(plan)
+    normal = components(keys, busbar, lines, include_open=False)
+    n1 = components(keys, busbar, lines, include_open=True)
     installed, units, fixed = _load_arrays(inp, load_keys)
     g = inp.lv.g()
     feeder = np.array([normal[k] for k in load_keys])
@@ -327,7 +303,7 @@ def line_types(inp: DistrictInput) -> tuple[LineType, LineType]:
     return inp.params.cable_at(inp.vn_kv), inp.params.overhead_at(inp.vn_kv)
 
 
-def _line_parameters(line: LinePlan, types: tuple[LineType, LineType], cache: dict[str, LineType]
+def line_parameters(line: LinePlan, types: tuple[LineType, LineType], cache: dict[str, LineType]
                      ) -> tuple[float, float, float, float]:
     """``(r_ohm_per_km, x_ohm_per_km, c_nf_per_km, max_i_ka)`` of a planned line; mixed lines length-weighted.
 
@@ -398,7 +374,7 @@ def build_design_net(inp: DistrictInput, plan: TopologyPlan, *, epsg: int = DEFA
             joint = plan.joints[key]
             xy[key] = (float(joint[0]), float(joint[1]))
             kinds.append("joint")
-    lines = _net_lines(plan)
+    lines = net_lines(plan)
     for line in lines:
         for key in (line.from_key, line.to_key):
             if int(key) not in bus_of:
@@ -425,8 +401,8 @@ def build_design_net(inp: DistrictInput, plan: TopologyPlan, *, epsg: int = DEFA
     if lines:
         cache: dict[str, LineType] = {}
         types = line_types(inp)
-        electrical = [_line_parameters(line, types, cache) for line in lines]
-        exits = _ring_exits(plan, busbar)
+        electrical = [line_parameters(line, types, cache) for line in lines]
+        exits = ring_exits(plan, busbar)
         offsets = np.cumsum([len(keys)] + [len(c) for c in line_coords])
         geodata = [[tuple(p) for p in lonlat[offsets[i]:offsets[i + 1]]] for i in range(len(lines))]
         line_index = pp.create_lines_from_parameters(
@@ -713,349 +689,6 @@ def case_metrics(cases: Mapping[str, CaseResult]) -> dict:
     out["max_line_loading_percent"] = _max(["load"], loading)
     out["max_line_loading_n1_percent"] = _max(N1_CASES, loading)
     return out
-
-
-# ---------------------------------------------------------------------------------------------- repair
-def _json(value: Any) -> Any:
-    if isinstance(value, (np.integer,)):
-        return int(value)
-    if isinstance(value, (float, np.floating)):
-        return None if not math.isfinite(float(value)) else float(value)
-    return value
-
-
-def _record(round_no: int, name: str, violation: Violation | None, **extra: Any) -> dict:
-    record: dict[str, Any] = {"round": round_no, "action": name}
-    if violation is not None:
-        record.update(case=violation.case, violation=violation.kind, element=violation.element,
-                      key=int(violation.key), value=_json(violation.value), limit=_json(violation.limit))
-    record.update({k: ([_json(v) for v in value] if isinstance(value, (list, tuple)) else _json(value))
-                   for k, value in extra.items()})
-    return record
-
-
-def _member_count(inp: DistrictInput, members: Sequence[int]) -> int:
-    nodes = inp.nodes
-    return sum(1 for m in members if int(m) in nodes.index and nodes.at[int(m), "kind"] in ("station", "customer"))
-
-
-def _parallel(plan: TopologyPlan) -> dict[int, int]:
-    return {int(line.key): int(line.parallel) for line in plan.lines}
-
-
-def _signature(plan: TopologyPlan) -> tuple:
-    """What a structural repair changes: rings, lines (ends, role, parallels, open state) and node roles."""
-    return (tuple((int(r.ring_id), r.kind, tuple(int(m) for m in r.members), r.nop_key) for r in plan.rings),
-            tuple((int(line.key), int(line.from_key), int(line.to_key), line.role, int(line.parallel),
-                   bool(line.normally_open), line.open_at_key) for line in plan.lines),
-            tuple(sorted((int(k), str(v)) for k, v in plan.node_role.items())))
-
-
-def path_lines(plan: TopologyPlan, busbar: int, target: int, case: str) -> list[int]:
-    """Keys of the lines from the busbar to node ``target`` in the switching state of ``case``: the normally-open
-    lines open in normal operation (``load``), closed in ``n1a``/``n1b`` with the A or B exits out.
-    Empty if ``target`` is not reached."""
-    out = N1_EXIT.get(case)
-    exits = _ring_exits(plan, busbar) if out is not None else {}
-    neighbours: dict[int, list[tuple[int, int]]] = {}
-    for line in _net_lines(plan):
-        if (line.normally_open and out is None) or (out is not None and exits.get(int(line.key)) == out):
-            continue
-        a, b = int(line.from_key), int(line.to_key)
-        neighbours.setdefault(a, []).append((b, int(line.key)))
-        neighbours.setdefault(b, []).append((a, int(line.key)))
-    parent: dict[int, tuple[int, int] | None] = {busbar: None}
-    queue = deque([busbar])
-    while queue and target not in parent:
-        node = queue.popleft()
-        for other, key in sorted(neighbours.get(node, ())):
-            if other not in parent:
-                parent[other] = (node, key)
-                queue.append(other)
-    if target not in parent:
-        return []
-    keys = []
-    node = target
-    while parent[node] is not None:
-        node, key = parent[node]
-        keys.append(key)
-    return keys[::-1]
-
-
-def _upgradable(line: LinePlan, vn_kv: float) -> bool:
-    """Whether a larger conductor of the same kind exists for some part of the line (no type name: no)."""
-    for part in (line.std_type or "").split(" + "):
-        try:
-            if part.strip() and equipment.upgraded_line_type(part.strip(), vn_kv) is not None:
-                return True
-        except ValueError:
-            continue
-    return False
-
-
-def repair(inp: DistrictInput, ctx: Any, ev: Any, plan: TopologyPlan, violations: Sequence[Violation]
-           ) -> tuple[TopologyPlan, list[dict]]:
-    """One round of the repair loop: applies all non-conflicting actions, at most one per ring.
-
-    Larger conductors come before topology changes, as in Ding0's reinforcement (``topology.upgrade_lines``, the
-    pandapower conductors of the kind by ampacity, :func:`pylovo.mv_grid.equipment.upgrade_ladder`). In this order:
-
-    1. Voltage (``load``, ``n1a``, ``n1b``) on a node of ring r, a ladder over the rounds: move the NOP to the best
-       feasible position (``topology.move_nop``); if it does not move (or moved in an earlier round and the ring
-       still violates): the next larger conductor on every line of the path from the busbar to the node in that
-       case (:func:`path_lines`), repeated while a line can be upgraded; then split the ring
-       (``topology.split_ring``, rings with at least 2 members); then ``parallel`` + 1 on the first section of each
-       half (the two exits). Rings made by a split continue at the last step.
-    2. Loading (``load``, ``n1*``) on a section of ring r: the smallest conductor that carries the current within
-       the limit; at the largest conductor, split the ring if the section is a busbar exit and the ring has at least
-       4 members, else ``parallel`` + 1 (up to ``max_parallel_cables``).
-    3. Loading or voltage on a dedicated feeder or a busbar radial: larger conductors (the overloaded line, or all
-       lines of the feeder for voltage), then ``parallel`` + 1 on its lines (up to the cap), else the report
-       ``dedicated_overload``.
-    4. ``not_converged``: report, the topology is kept.
-
-    Args:
-        inp: The district input.
-        ctx: Its context of the topology (:class:`pylovo.mv_grid.topology.DistrictContext`).
-        ev: The ring evaluator of the solver.
-        plan: The current plan.
-        violations: The violations of :func:`check` for ``plan``.
-
-    Returns:
-        ``(plan, actions)``: the repaired plan and one JSON-native record per applied action (``round``,
-        ``action``, the triggering violation, ``ring_id``/``node_key``/``line_keys``). An empty list means nothing
-        could be repaired. Reports of violations that are not repaired are kept in
-        ``plan.diagnostics["repair_reports"]`` (the latest round), the ladder state per ring in
-        ``plan.diagnostics["repair_stage"]`` and the round count in ``plan.diagnostics["repair_round"]``.
-    """
-    params = inp.params
-    topology = _topology()
-    vn_kv = float(inp.vn_kv)
-    cache: dict[str, LineType] = {}
-    types = line_types(inp)
-    round_no = int(plan.diagnostics.get("repair_round", 0)) + 1
-    stage: dict[int, int] = {int(k): int(v) for k, v in (plan.diagnostics.get("repair_stage") or {}).items()}
-    busbar = busbar_key(inp)
-    keys = bus_keys(inp, plan)
-    rings = {int(r.ring_id): r for r in plan.rings}
-    lines = {int(line.key): line for line in plan.lines}
-    n1 = _components(keys, busbar, _net_lines(plan), include_open=True)
-    ring_of_component = _component_rings(plan, n1)
-    exits = _ring_exits(plan, busbar)
-
-    def ring_of_node(key: int) -> int | None:
-        ring = plan.node_ring.get(key)
-        if ring is not None:
-            return int(ring)
-        label = n1.get(key)
-        return ring_of_component.get(label) if label is not None else None
-
-    def ring_of_line(line: LinePlan) -> int | None:
-        if line.ring_id is not None:
-            return int(line.ring_id)
-        for key in (line.from_key, line.to_key):
-            if int(key) != busbar:
-                return ring_of_node(int(key))
-        return None
-
-    def feeder_kind(ring_id: int | None, line: LinePlan | None = None) -> str:
-        if ring_id is not None and ring_id in rings:
-            return rings[ring_id].kind
-        if line is not None and line.role == "dedicated":
-            return line.role
-        return "radial"
-
-    # ---- classify
-    ring_voltage: dict[int, Violation] = {}
-    ring_loading: dict[int, list[tuple[int, Violation]]] = {}
-    feeder_lines: dict[int, Violation] = {}           # ring id (non-ring feeders) -> first violation
-    reports: list[dict] = []
-    for v in violations:
-        if v.kind == "not_converged":
-            reports.append(_record(round_no, "not_converged", v))
-            continue
-        if v.element == "bus":
-            ring_id = v.ring_id if v.ring_id is not None else ring_of_node(int(v.key))
-            line = None
-        else:
-            line = lines.get(int(v.key))
-            if line is None:
-                continue
-            ring_id = v.ring_id if v.ring_id is not None else ring_of_line(line)
-        kind = feeder_kind(ring_id, line)
-        if kind == "ring":
-            if v.element == "bus":
-                ring_voltage.setdefault(int(ring_id), v)
-            else:
-                ring_loading.setdefault(int(ring_id), []).append((int(v.key), v))
-        elif ring_id is not None:
-            feeder_lines.setdefault(int(ring_id), v)
-        else:
-            reports.append(_record(round_no, "unassigned", v))
-
-    touched: set[int] = set()
-    upgrade_requests: list[tuple[list[int], int | None, Violation, str, dict[int, float] | None]] = []
-    parallel_requests: list[tuple[list[int], int | None, Violation, str]] = []
-    structural: list[tuple[str, Any, Violation]] = []   # ("move_nop" | "split_ring", ring_id)
-
-    def upgradable(keys: Iterable[int], current: TopologyPlan | None = None) -> list[int]:
-        by_key = lines if current is None else {int(line.key): line for line in current.lines}
-        return [int(k) for k in keys if int(k) in by_key and _upgradable(by_key[int(k)], vn_kv)]
-
-    def needed_ka(key: int, v: Violation) -> float:
-        """Ampacity per circuit that carries the current of an overloaded line within the limit."""
-        return _line_parameters(lines[key], types, cache)[3] * float(v.value) / max(float(v.limit), 1e-9)
-
-    def exit_lines(ring_id: int) -> list[int]:
-        return sorted(k for k, line in lines.items()
-                      if line.ring_id is not None and int(line.ring_id) == ring_id and exits.get(k) in ("a", "b"))
-
-    # 1. voltage on rings: the ladder
-    for ring_id, v in sorted(ring_voltage.items()):
-        ring = rings.get(ring_id)
-        if ring is None:
-            continue
-        level = stage.get(ring_id, 0)
-        if level < 1:
-            stage[ring_id] = 1
-            structural.append(("move_nop", ring_id, v))
-            touched.add(ring_id)
-            continue
-        path = upgradable(path_lines(plan, busbar, int(v.key), v.case)) if level < 2 else []
-        if path:
-            upgrade_requests.append((path, ring_id, v, "voltage", None))
-            touched.add(ring_id)
-            continue
-        if level < 2 and _member_count(inp, ring.members) >= 2:
-            stage[ring_id] = 2
-            structural.append(("split_ring", ring_id, v))
-            touched.add(ring_id)
-            continue
-        if level < 3:
-            stage[ring_id] = 3
-            parallel_requests.append((exit_lines(ring_id), ring_id, v, "voltage"))
-            touched.add(ring_id)
-            continue
-        reports.append(_record(round_no, "unresolved_voltage", v, ring_id=ring_id))
-
-    # 2. loading on ring sections
-    for ring_id, items in sorted(ring_loading.items()):
-        ring = rings.get(ring_id)
-        if ring is None or ring_id in touched:
-            continue
-        larger = {k: needed_ka(k, v) for k, v in items if upgradable([k])}
-        if larger:
-            upgrade_requests.append((list(larger), ring_id, items[0][1], "loading", larger))
-            touched.add(ring_id)
-            continue
-        on_exit = [(k, v) for k, v in items if exits.get(k) in ("a", "b")]
-        if on_exit and _member_count(inp, ring.members) >= 4:
-            structural.append(("split_ring", ring_id, on_exit[0][1]))
-            stage[ring_id] = max(stage.get(ring_id, 0), 2)
-        else:
-            parallel_requests.append(([k for k, _ in items], ring_id, items[0][1], "loading"))
-        touched.add(ring_id)
-
-    # 3. dedicated feeders and busbar radials
-    for ring_id, v in sorted(feeder_lines.items()):
-        if ring_id in touched:
-            continue
-        keys_of_feeder = sorted(k for k, line in lines.items()
-                                if line.ring_id is not None and int(line.ring_id) == ring_id)
-        touched.add(ring_id)
-        if v.element == "line":
-            larger = {int(v.key): needed_ka(int(v.key), v)} if upgradable([int(v.key)]) else {}
-        else:
-            larger = {k: None for k in upgradable(keys_of_feeder)}
-        if larger:
-            upgrade_requests.append((list(larger), ring_id, v, "dedicated",
-                                     larger if v.element == "line" else None))
-            continue
-        parallel_requests.append((keys_of_feeder, ring_id, v, "dedicated"))
-
-    # ---- apply: larger conductors and parallel cables first (line keys stay valid), then the structural changes
-    actions: list[dict] = []
-
-    def upgrade(line_keys: list[int], ring_id: int | None, v: Violation, reason: str,
-                need: dict[int, float] | None) -> bool:
-        nonlocal plan
-        plan, changed = topology.upgrade_lines(plan, line_keys, vn_kv,
-                                               None if need is None else {k: x for k, x in need.items()
-                                                                          if x is not None})
-        if changed:
-            names = sorted({line.std_type for line in plan.lines if int(line.key) in set(changed)})
-            actions.append(_record(round_no, "upgrade", v, ring_id=ring_id, line_keys=changed, reason=reason,
-                                   std_types=names))
-        return bool(changed)
-
-    for line_keys, ring_id, v, reason, need in upgrade_requests:
-        if not upgrade(line_keys, ring_id, v, reason, need):
-            reports.append(_record(round_no, "unresolved_" + reason, v, ring_id=ring_id, line_keys=line_keys))
-    for line_keys, ring_id, v, reason in parallel_requests:
-        before = _parallel(plan)
-        if line_keys:
-            plan, _ = topology.add_parallel(plan, line_keys, int(params.max_parallel_cables))
-        after = _parallel(plan)
-        changed = [k for k in line_keys if after.get(k, 0) > before.get(k, 0)]
-        if changed:
-            actions.append(_record(round_no, "parallel", v, ring_id=ring_id, line_keys=changed, reason=reason))
-        else:
-            reports.append(_record(round_no, "dedicated_overload" if reason == "dedicated" else
-                                   "unresolved_" + reason, v, ring_id=ring_id, line_keys=line_keys))
-    def exit_parallel(target: int, v: Violation) -> None:
-        """Last step of the voltage ladder: one more cable on the two exits of ring ``target``."""
-        nonlocal plan
-        stage[target] = 3
-        current_exits = _ring_exits(plan, busbar)
-        line_keys = sorted(int(line.key) for line in plan.lines if line.ring_id is not None
-                           and int(line.ring_id) == target and current_exits.get(int(line.key)) in ("a", "b"))
-        before = _parallel(plan)
-        if line_keys:
-            plan, _ = topology.add_parallel(plan, line_keys, int(params.max_parallel_cables))
-        changed = [k for k in line_keys if _parallel(plan).get(k, 0) > before.get(k, 0)]
-        if changed:
-            actions.append(_record(round_no, "parallel", v, ring_id=target, line_keys=changed, reason="voltage"))
-        else:
-            reports.append(_record(round_no, "unresolved_voltage", v, ring_id=target))
-
-    for name, target, v in structural:
-        ring_ids = {int(r.ring_id) for r in plan.rings}
-        if name in ("move_nop", "split_ring") and target not in ring_ids:
-            continue
-        if name == "move_nop":
-            new_plan, moved = topology.move_nop(ctx, plan, target)
-            if moved:
-                plan = new_plan
-                actions.append(_record(round_no, "move_nop", v, ring_id=target))
-                continue
-            path = upgradable(path_lines(plan, busbar, int(v.key), v.case), plan)
-            if path and upgrade(path, target, v, "voltage", None):
-                continue                        # the open point is already at its best position
-            ring = next(r for r in plan.rings if int(r.ring_id) == target)
-            if _member_count(inp, ring.members) < 2:
-                exit_parallel(target, v)
-                continue
-            name = "split_ring"                 # the open point is already at its best position
-        if name == "split_ring":
-            before = _signature(plan)
-            new_plan = topology.split_ring(ctx, ev, plan, target)
-            if _signature(new_plan) == before:  # the ring cannot be split (fewer than two members)
-                exit_parallel(target, v)
-                continue
-            plan = new_plan
-            new_ids = {int(r.ring_id) for r in plan.rings}
-            for ring_id in new_ids - ring_ids:
-                stage[ring_id] = 2
-            if target in new_ids:
-                stage[target] = 2
-            else:
-                stage.pop(target, None)
-            actions.append(_record(round_no, "split_ring", v, ring_id=target, new_ring_ids=sorted(new_ids - ring_ids)))
-
-    plan.diagnostics["repair_round"] = round_no
-    plan.diagnostics["repair_stage"] = {str(k): v for k, v in sorted(stage.items())}
-    plan.diagnostics["repair_reports"] = reports
-    return plan, actions
 
 
 # ---------------------------------------------------------------------------------------------- HV/MV sizing

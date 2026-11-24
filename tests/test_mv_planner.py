@@ -80,8 +80,9 @@ def fakes(monkeypatch):
     calls: list[str] = []
     state = {"violations": [[]], "actions": [[{"action": "move_nop", "ring_id": 1}]]}
     mods = {name: types.ModuleType(f"pylovo.mv_grid.{name}") for name in
-            ("graph", "topology", "rings", "solvers", "electrical", "coincidence")}
-    g, t, r, s, e, c = (mods[n] for n in ("graph", "topology", "rings", "solvers", "electrical", "coincidence"))
+            ("graph", "topology", "rings", "solvers", "electrical", "repair", "coincidence")}
+    g, t, r, s, e, rp, c = (mods[n] for n in ("graph", "topology", "rings", "solvers", "electrical", "repair",
+                                              "coincidence"))
 
     def build_run_graph(edges, nodes, **kw):
         calls.append(f"run_graph:{kw['long_connector_m']:g}:{kw['bridge_detour']:g}")
@@ -116,7 +117,7 @@ def fakes(monkeypatch):
         actions = state["actions"].pop(0) if state["actions"] else []
         return (ring_topology(nop=11) if actions else plan), actions
 
-    e.check, e.repair = check, repair
+    e.check, rp.repair = check, repair
     e.size_substation = lambda inp, plan: (calls.append("size") or (2, 25.0, "sized"))
     e.district_load_kw = lambda inp, plan: 1000.0 * sum(role == "ring" for role in plan.node_role.values())
     e.build_stored_net = lambda net, units, mva, inp: (calls.append(f"stored:{net}:{units}:{mva:g}") or ("stored", -2))
