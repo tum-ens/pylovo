@@ -83,7 +83,8 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     ev = rings.RingEvaluator.from_model(inp, model)
     result = solvers.solve(ev, model.dist_m, model.candidates, rounds=params.local_search_rounds,
                            neighbours=params.neighbours, time_guard_s=params.ls_time_guard_s)
-    plan = topology.build_plan(inp, rg, model, result.routes)
+    ctx = topology.DistrictContext(inp, rg, model)                                       # shared with the repairs
+    plan = topology.build_plan(ctx, result.routes)
 
     repairs: list[dict] = []
     rounds_used = 0
@@ -93,7 +94,7 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
         violations = electrical.check(cases, inp, plan)
         if not violations or round_ == params.repair_rounds:
             break
-        plan, actions = electrical.repair(inp, rg, model, ev, plan, violations)
+        plan, actions = electrical.repair(inp, ctx, ev, plan, violations)
         if not actions:
             break                                                                        # nothing left to repair
         rounds_used += 1

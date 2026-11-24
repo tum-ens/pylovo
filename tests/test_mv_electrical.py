@@ -416,11 +416,11 @@ class FakeTopology:
         self.moved = moved
         self.calls: list[tuple] = []
 
-    def move_nop(self, inp, rg, model, plan, ring_id):
+    def move_nop(self, ctx, plan, ring_id):
         self.calls.append(("move_nop", ring_id))
         return plan, self.moved
 
-    def split_ring(self, inp, rg, model, ev, plan, ring_id):
+    def split_ring(self, ctx, ev, plan, ring_id):
         self.calls.append(("split_ring", ring_id))
         ring = next(r for r in plan.rings if r.ring_id == ring_id)
         new_id = max(r.ring_id for r in plan.rings) + 1
@@ -466,16 +466,16 @@ def test_repair_voltage_ladder_moves_the_nop_then_splits_then_adds_parallel(fake
     inp, plan = b.build()
     last = plan.rings[0].members[-1]
     low = _violation("load", "voltage_low", "bus", last, r, 0.96, 0.97)
-    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    plan, actions = electrical.repair(inp, None, None, plan, [low])
     assert [a["action"] for a in actions] == ["move_nop"] and actions[0]["round"] == 1
-    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    plan, actions = electrical.repair(inp, None, None, plan, [low])
     assert [a["action"] for a in actions] == ["split_ring"] and actions[0]["new_ring_ids"] == [2]
     assert plan.diagnostics["repair_stage"] == {"1": 2, "2": 2}
-    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    plan, actions = electrical.repair(inp, None, None, plan, [low])
     exits = sorted(line.key for line in plan.lines if line.exit in ("a", "b"))
     assert [a["action"] for a in actions] == ["parallel"] and actions[0]["line_keys"] == exits
     assert all(line.parallel == 2 for line in plan.lines if line.key in exits)
-    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    plan, actions = electrical.repair(inp, None, None, plan, [low])
     assert actions == [] and plan.diagnostics["repair_reports"][0]["action"] == "unresolved_voltage"
     assert plan.diagnostics["repair_round"] == 4
     assert [c[0] for c in fake.calls] == ["move_nop", "split_ring", "add_parallel"]
@@ -507,13 +507,13 @@ def test_repair_upgrades_an_overloaded_overhead_section_before_splitting(fake_to
     inp, plan = b.build()
     exit_key = next(line.key for line in plan.lines if line.exit == "a")
     load = _violation("load", "loading", "line", exit_key, r, 70.0, 60.0)
-    plan, actions = electrical.repair(inp, None, None, None, plan, [load])
+    plan, actions = electrical.repair(inp, None, None, plan, [load])
     # 410 A x 70/60 = 478 A: the smallest overhead line that carries it is 184-AL1 (535 A)
     assert [a["action"] for a in actions] == ["upgrade"] and actions[0]["line_keys"] == [exit_key]
     assert actions[0]["std_types"] == ["184-AL1/30-ST1A 20.0"] and actions[0]["reason"] == "loading"
-    plan, actions = electrical.repair(inp, None, None, None, plan, [load])
+    plan, actions = electrical.repair(inp, None, None, plan, [load])
     assert _types_of(plan, [exit_key]) == ["243-AL1/39-ST1A 20.0"]
-    plan, actions = electrical.repair(inp, None, None, None, plan, [load])    # the largest: split the ring
+    plan, actions = electrical.repair(inp, None, None, plan, [load])    # the largest: split the ring
     assert [a["action"] for a in actions] == ["split_ring"]
     assert [c[0] for c in fake.calls] == ["upgrade_lines", "upgrade_lines", "split_ring"]
 
@@ -528,13 +528,13 @@ def test_repair_voltage_ladder_upgrades_the_path_before_splitting(fake_topology)
     low = _violation("load", "voltage_low", "bus", target, r, 0.96, 0.97)
     names = []
     for _ in range(4):
-        plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+        plan, actions = electrical.repair(inp, None, None, plan, [low])
         names.append([a["action"] for a in actions])
         if actions and actions[0]["action"] == "upgrade":
             assert actions[0]["line_keys"] == path and actions[0]["reason"] == "voltage"
     assert names == [["move_nop"], ["upgrade"], ["upgrade"], ["upgrade"]]
     assert set(_types_of(plan, path)) == {"243-AL1/39-ST1A 20.0"}
-    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    plan, actions = electrical.repair(inp, None, None, plan, [low])
     assert [a["action"] for a in actions] == ["split_ring"]
 
 
@@ -545,7 +545,7 @@ def test_repair_upgrades_the_path_at_once_when_the_nop_cannot_move(fake_topology
     inp, plan = b.build()
     target = plan.rings[0].members[1]
     low = _violation("load", "voltage_low", "bus", target, r, 0.96, 0.97)
-    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    plan, actions = electrical.repair(inp, None, None, plan, [low])
     assert [c[0] for c in fake.calls] == ["move_nop", "upgrade_lines"]
     assert [a["action"] for a in actions] == ["upgrade"]
     assert plan.diagnostics["repair_stage"] == {"1": 1}
@@ -557,7 +557,7 @@ def test_repair_splits_at_once_when_the_nop_cannot_move(fake_topology):
     r = b.ring(6)
     inp, plan = b.build()
     low = _violation("n1a", "voltage_low", "bus", plan.rings[0].members[0], r, 0.91, 0.92)
-    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    plan, actions = electrical.repair(inp, None, None, plan, [low])
     assert [c[0] for c in fake.calls] == ["move_nop", "split_ring"]
     assert [a["action"] for a in actions] == ["split_ring"]
 
@@ -573,7 +573,7 @@ def test_repair_loading_rules(fake_topology):
                       and not line.normally_open)
     legs = sorted(line.key for line in plan.lines if line.ring_id == rd)
     # an overloaded busbar exit of a ring with >= 4 members splits the ring; a dedicated leg gets a parallel cable
-    plan2, actions = electrical.repair(inp, None, None, None, plan, [
+    plan2, actions = electrical.repair(inp, None, None, plan, [
         _violation("load", "loading", "line", exit_key, r, 70.0, 60.0),
         _violation("n1a", "loading", "line", legs[1], rd, 120.0, 100.0)])
     assert sorted(a["action"] for a in actions) == ["parallel", "split_ring"]
@@ -581,19 +581,19 @@ def test_repair_loading_rules(fake_topology):
     parallel = next(a for a in actions if a["action"] == "parallel")
     assert parallel["line_keys"] == legs and parallel["reason"] == "dedicated"
     # an overloaded middle section gets a parallel cable, up to the cap
-    plan3, actions = electrical.repair(inp, None, None, None, plan, [
+    plan3, actions = electrical.repair(inp, None, None, plan, [
         _violation("load", "loading", "line", middle_key, r, 70.0, 60.0)])
     assert [a["action"] for a in actions] == ["parallel"] and actions[0]["line_keys"] == [middle_key]
     capped = dataclasses.replace(plan, lines=[dataclasses.replace(line, parallel=2) for line in plan.lines],
                                  diagnostics={})
-    plan4, actions = electrical.repair(inp, None, None, None, capped, [
+    plan4, actions = electrical.repair(inp, None, None, capped, [
         _violation("load", "loading", "line", middle_key, r, 70.0, 60.0),
         _violation("load", "loading", "line", legs[0], rd, 70.0, 60.0)])
     assert actions == []
     assert sorted(item["action"] for item in plan4.diagnostics["repair_reports"]) == [
         "dedicated_overload", "unresolved_loading"]
     # non-convergence is only reported
-    plan5, actions = electrical.repair(inp, None, None, None, plan, [
+    plan5, actions = electrical.repair(inp, None, None, plan, [
         _violation("n1b", "not_converged", "bus", BUSBAR, None, math.nan, math.nan)])
     assert actions == [] and plan5.diagnostics["repair_reports"][0]["action"] == "not_converged"
 
@@ -848,11 +848,11 @@ def test_unconnected_station_is_unsupplied_not_a_crash():
 
 def test_repair_falls_back_to_exit_cables_when_a_split_changes_nothing(fake_topology):
     fake = fake_topology(moved=False)
-    fake.split_ring = lambda inp, rg, model, ev, plan, ring_id: (fake.calls.append(("split_ring", ring_id)), plan)[1]
+    fake.split_ring = lambda ctx, ev, plan, ring_id: (fake.calls.append(("split_ring", ring_id)), plan)[1]
     b = Builder()
     r = b.ring(6, set_exits=True)
     inp, plan = b.build()
     low = _violation("load", "voltage_low", "bus", plan.rings[0].members[-1], r, 0.96, 0.97)
-    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    plan, actions = electrical.repair(inp, None, None, plan, [low])
     assert [c[0] for c in fake.calls] == ["move_nop", "split_ring", "add_parallel"]
     assert [a["action"] for a in actions] == ["parallel"] and plan.diagnostics["repair_stage"] == {"1": 3}

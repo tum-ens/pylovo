@@ -15,7 +15,7 @@ import pytest
 from scipy.sparse import csr_matrix
 from shapely.geometry import LineString, Point
 
-from pylovo.mv_grid import equipment, topology
+from pylovo.mv_grid import equipment, network, topology
 from pylovo.mv_grid.model import NODE_COLUMNS, DistrictInput, EdgeSet, LineType, RingCheck, RunGraph, SolverResult
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters
 
@@ -121,12 +121,9 @@ class FakeEvaluator:
 
 @pytest.fixture(autouse=True)
 def fakes(monkeypatch):
-    monkeypatch.setattr(topology, "_rings", lambda: types.SimpleNamespace(check_ring=fake_check_ring))
+    monkeypatch.setattr(network, "_rings", lambda: types.SimpleNamespace(check_ring=fake_check_ring))
     monkeypatch.setattr(topology, "_coincidence", lambda: types.SimpleNamespace(coincident_kw=fake_coincident_kw))
     monkeypatch.setattr(topology, "_solvers", lambda: types.SimpleNamespace(solve=fake_solve))
-    topology._CONTEXT.clear()
-    yield
-    topology._CONTEXT.clear()
 
 
 # ============================================================================================ synthetic districts
@@ -240,8 +237,9 @@ def plan_of(district: District, routes: list[list[int]], *, cap: int = 20, satel
     keys = list(inp.nodes.index[terminals])
     route_t = [[keys.index(k) for k in route] for route in routes]
     ev = FakeEvaluator(cap)
-    plan = topology.build_plan(inp, rg, model, route_t)
-    return plan, (inp, rg, model, ev)
+    ctx = topology.DistrictContext(inp, rg, model)
+    plan = topology.build_plan(ctx, route_t)
+    return plan, (inp, ctx, ev)
 
 
 LOOP = [(0, 0), (500, 0), (1000, 0), (2000, 0), (2500, 0), (2600, 0), (3000, 0), (4000, 0), (4000, 500),
@@ -713,9 +711,9 @@ def test_discounted_stub_extension_keeps_the_true_tree_depth(cost_factor):
     d.node(22, "station", 2000, -2100, settlement=1)
     inp, rg = d.build(osm_line_cost_factor=cost_factor, stub_max_length_m=2000.0)
     model = topology.distance_model(inp, rg, topology.terminal_rows(inp))
-    ctx = topology._context(inp, rg, model)
-    net = topology._Network(ctx)
-    net.add_structure(topology._Struct(0, "ring", [ctx.row_of_key[k] for k in (10, 30, 40, 50)]))
+    ctx = topology.DistrictContext(inp, rg, model)
+    net = network.Network(ctx)
+    net.add_structure(network.Struct(0, "ring", [ctx.row_of_key[k] for k in (10, 30, 40, 50)]))
     assert net.add_stub(ctx.row_of_key[21], 0, enforce=True)
     assert net.depth[21] == pytest.approx(1500.0)
     assert net.stub_attachment(ctx.row_of_key[22], 0) is None
@@ -801,9 +799,9 @@ def balanced_ring() -> District:
 
 
 def test_move_nop_follows_stronger_sections_and_reassigns_feeders():
-    plan, (inp, rg, model, ev) = plan_of(balanced_ring(), [[11, 12, 13]])
+    plan, (inp, ctx, ev) = plan_of(balanced_ring(), [[11, 12, 13]])
     ring = plan.rings[0]
-    unchanged, moved = topology.move_nop(inp, rg, model, plan, ring.ring_id)
+    unchanged, moved = topology.move_nop(ctx, plan, ring.ring_id)
     assert not moved and unchanged is plan
     assert ring.nop_key == 12 and plan.node_feeder[12] == ring.feeder_a
     # four cables on the B half (12 -> 13 -> busbar): the B half takes 12 and 13, the open point moves to 11
@@ -811,7 +809,7 @@ def test_move_nop_follows_stronger_sections_and_reassigns_feeders():
     stronger = plan
     for _ in range(3):
         stronger, _ = topology.add_parallel(stronger, b_half, max_parallel=4)
-    new, moved = topology.move_nop(inp, rg, model, stronger, ring.ring_id)
+    new, moved = topology.move_nop(ctx, stronger, ring.ring_id)
     assert moved
     assert new.rings[0].nop_key == 11
     assert_plan_valid(new, inp)
@@ -827,8 +825,8 @@ def test_split_ring_halves_the_ring():
     d.node(BUSBAR, "busbar", 0, 0, hint="busbar", urban=True, settlement=1)
     for key, x in zip((11, 12, 13, 14, 15, 16), range(1000, 7000, 1000)):
         d.node(key, "station", x, 0, urban=True, settlement=1)
-    plan, (inp, rg, model, ev) = plan_of(d, [[11, 12, 13, 14, 15, 16]])
-    plan2 = topology.split_ring(inp, rg, model, ev, plan, plan.rings[0].ring_id)
+    plan, (inp, ctx, ev) = plan_of(d, [[11, 12, 13, 14, 15, 16]])
+    plan2 = topology.split_ring(ctx, ev, plan, plan.rings[0].ring_id)
     assert_plan_valid(plan2, inp)
     rings = [r for r in plan2.rings if r.kind == "ring"]
     assert len(rings) == 2 and all(len([k for k in r.members if k > 0]) <= 3 for r in rings)
@@ -846,16 +844,16 @@ def test_split_ring_with_the_real_solver(monkeypatch):
     d.node(BUSBAR, "busbar", 0, 0, hint="busbar", urban=True, settlement=1)
     for key, x in zip((11, 12, 13, 14, 15, 16), range(1000, 7000, 1000)):
         d.node(key, "station", x, 0, urban=True, settlement=1)
-    plan, (inp, rg, model, ev) = plan_of(d, [[11, 12, 13, 14, 15, 16]])
-    split = topology.split_ring(inp, rg, model, ev, plan, plan.rings[0].ring_id)
+    plan, (inp, ctx, ev) = plan_of(d, [[11, 12, 13, 14, 15, 16]])
+    split = topology.split_ring(ctx, ev, plan, plan.rings[0].ring_id)
     assert_plan_valid(split, inp)
     rings = [r for r in split.rings if r.kind == "ring"]
     assert len(rings) == 2 and sorted(k for r in rings for k in r.members if k > 0) == [11, 12, 13, 14, 15, 16]
 
 
 def test_split_ring_keeps_single_member_rings():
-    plan, (inp, rg, model, ev) = plan_of(radial_district(), [[40], [41], [42]], satellites=False)
-    assert topology.split_ring(inp, rg, model, ev, plan, ring_of(plan, 41).ring_id) is plan
+    plan, (inp, ctx, ev) = plan_of(radial_district(), [[40], [41], [42]], satellites=False)
+    assert topology.split_ring(ctx, ev, plan, ring_of(plan, 41).ring_id) is plan
 
 
 def test_upgrade_lines_takes_larger_conductors():

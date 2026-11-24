@@ -392,7 +392,8 @@ def test_lv_only_runs_do_not_import_the_mv_stage():
         "generate.main(['--plz', '1', '2'])\n"
         "print('LOADED', [m for m in ('pylovo.mv_grid.generator', 'pylovo.mv_grid.preparation',"
         " 'pylovo.mv_grid.district_input', 'pylovo.mv_grid.post_steps', 'pylovo.mv_grid.planner',"
-        " 'pylovo.mv_grid.topology', 'pylovo.mv_grid.electrical', 'pylovo.mv_grid.solvers') if m in sys.modules])\n")
+        " 'pylovo.mv_grid.topology', 'pylovo.mv_grid.routing', 'pylovo.mv_grid.network', 'pylovo.mv_grid.electrical',"
+        " 'pylovo.mv_grid.solvers') if m in sys.modules])\n")
     result = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True, timeout=300)
     assert result.returncode == 0, result.stderr[-2000:]
     assert "LOADED []" in result.stdout

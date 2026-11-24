@@ -76,15 +76,16 @@ class District:
 
 
 def plan_with_routes(district: District, routes: list[list[int]]):
-    """The plan of the given rings (node keys) by the real topology and ring evaluator, and its inputs."""
-    topology._CONTEXT.clear()
+    """The plan of the given rings (node keys) by the real topology and ring evaluator, and the inputs of a split
+    (district context and evaluator)."""
     inp, rg = district.build()
     terminals = topology.terminal_rows(inp)
     model = topology.distance_model(inp, rg, terminals)
     ev = rings.RingEvaluator.from_model(inp, model)
     keys = list(inp.nodes.index[terminals])
-    plan = topology.build_plan(inp, rg, model, [[keys.index(k) for k in route] for route in routes])
-    return plan, (inp, rg, model, ev)
+    ctx = topology.DistrictContext(inp, rg, model)
+    plan = topology.build_plan(ctx, [[keys.index(k) for k in route] for route in routes])
+    return plan, (ctx, ev)
 
 
 def ring_lines(plan, member: int):

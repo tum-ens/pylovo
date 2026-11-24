@@ -793,7 +793,7 @@ def _upgradable(line: LinePlan, vn_kv: float) -> bool:
     return False
 
 
-def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan, violations: Sequence[Violation]
+def repair(inp: DistrictInput, ctx: Any, ev: Any, plan: TopologyPlan, violations: Sequence[Violation]
            ) -> tuple[TopologyPlan, list[dict]]:
     """One round of the repair loop: applies all non-conflicting actions, at most one per ring.
 
@@ -816,8 +816,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
 
     Args:
         inp: The district input.
-        rg: Its run graph.
-        model: Its distance model.
+        ctx: Its context of the topology (:class:`pylovo.mv_grid.topology.DistrictContext`).
         ev: The ring evaluator of the solver.
         plan: The current plan.
         violations: The violations of :func:`check` for ``plan``.
@@ -1024,7 +1023,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
         if name in ("move_nop", "split_ring") and target not in ring_ids:
             continue
         if name == "move_nop":
-            new_plan, moved = topology.move_nop(inp, rg, model, plan, target)
+            new_plan, moved = topology.move_nop(ctx, plan, target)
             if moved:
                 plan = new_plan
                 actions.append(_record(round_no, "move_nop", v, ring_id=target))
@@ -1039,7 +1038,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
             name = "split_ring"                 # the open point is already at its best position
         if name == "split_ring":
             before = _signature(plan)
-            new_plan = topology.split_ring(inp, rg, model, ev, plan, target)
+            new_plan = topology.split_ring(ctx, ev, plan, target)
             if _signature(new_plan) == before:  # the ring cannot be split (fewer than two members)
                 exit_parallel(target, v)
                 continue

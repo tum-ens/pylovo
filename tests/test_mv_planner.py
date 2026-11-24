@@ -101,7 +101,8 @@ def fakes(monkeypatch):
         return SolverResult([[1, 2, 3]], 500.0, 400.0, 3, 7, False, 0.1, {"ls_gain_percent": 20.0})
 
     s.solve = solve
-    t.build_plan = lambda inp, rg, model, routes: (calls.append(f"plan:{routes}") or ring_topology())
+    t.DistrictContext = lambda inp, rg, model: types.SimpleNamespace(inp=inp, rg=rg, model=model)
+    t.build_plan = lambda ctx, routes: (calls.append(f"plan:{routes}") or ring_topology())
     e.build_design_net = lambda inp, plan: (calls.append("net") or f"net-{plan.rings[0].nop_key}")
     e.run_cases = lambda net, inp: (calls.append(f"cases:{net}") or {
         "load": case("load"), "n1a": case("n1a"), "n1b": case("n1b")})
@@ -110,7 +111,7 @@ def fakes(monkeypatch):
         calls.append("check")
         return state["violations"].pop(0) if state["violations"] else []
 
-    def repair(inp, rg, model, ev, plan, violations):
+    def repair(inp, ctx, ev, plan, violations):
         calls.append("repair")
         actions = state["actions"].pop(0) if state["actions"] else []
         return (ring_topology(nop=11) if actions else plan), actions
