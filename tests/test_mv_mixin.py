@@ -685,7 +685,7 @@ def test_lv_requirement_and_population_readers():
 # ---------------------------------------------------------------------------------------------- register + region
 class TransactionalTables:
     """The committed and the working state of ``mv_variant`` and ``mv_substation`` (rollback restores the last
-    commit), for the real registration, region and finish methods with the real ``stage._run_locked``."""
+    commit), for the real registration, region and finish methods with the real ``generator._run_locked``."""
 
     COLUMNS = ["version_id", "mv_variant_id", "mv_variant_comment", "mv_parameters", "lv_parameters", "plz_list",
                "graph_id", "status", "lv_fingerprint", "summary", "created_at", "finished_at"]
@@ -781,8 +781,8 @@ class RegionClient(mixin.MvResultMixin):
 
 @pytest.fixture()
 def region_steps(monkeypatch):
-    """``stage._run_locked`` with a region step that stores one substation named after its PLZ and graph."""
-    from pylovo.mv_grid import stage
+    """``generator._run_locked`` with a region step that stores one substation named after its PLZ and graph."""
+    from pylovo.mv_grid import generator, post_steps, preparation
 
     built = []
 
@@ -793,18 +793,21 @@ def region_steps(monkeypatch):
             raise RuntimeError("no HV/MV substation is within reach")
         return {}
 
-    for name, value in (("_region_step", region_step), ("_run_districts", lambda *a, **k: []),
-                        ("_plan_ties", lambda *a, **k: None), ("_plan_links", lambda *a, **k: None),
-                        ("display_geometry", lambda *a, **k: None), ("_demand_anchor", lambda *a, **k: {}),
-                        ("_osm_coverage", lambda *a, **k: {})):
-        monkeypatch.setattr(stage, name, value)
-    monkeypatch.setattr(stage.LvVersionParameters, "from_generation_parameters",
+    for module, name, value in ((preparation, "region_step", region_step),
+                                (generator, "_run_districts", lambda *a, **k: []),
+                                (post_steps, "plan_ties", lambda *a, **k: None),
+                                (post_steps, "plan_links", lambda *a, **k: None),
+                                (post_steps, "display_geometry", lambda *a, **k: None),
+                                (post_steps, "demand_anchor", lambda *a, **k: {}),
+                                (post_steps, "osm_coverage_report", lambda *a, **k: {})):
+        monkeypatch.setattr(module, name, value)
+    monkeypatch.setattr(generator.LvVersionParameters, "from_generation_parameters",
                         classmethod(lambda cls, v, s: SimpleNamespace(as_json=lambda: {"version_id": v})))
 
     def run(dbc, plz):
         from pylovo.mv_grid.parameters import MvParameters
 
-        return stage._run_locked(dbc, "mv1", MvParameters().replace(variant_id="d0"), plz, parallel=False, jobs=1,
+        return generator._run_locked(dbc, "mv1", MvParameters().replace(variant_id="d0"), plz, parallel=False, jobs=1,
                                  replace=False, log_file="log/x.txt", logger=logging.getLogger("t"), start=0.0)
     return run, built
 

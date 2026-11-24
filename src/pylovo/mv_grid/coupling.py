@@ -48,7 +48,7 @@ from scipy.sparse.csgraph import connected_components
 
 from pylovo.electrical_backend.core.specs import MIN_LINE_KM
 from pylovo import station_transformers
-from pylovo.mv_grid import coincidence, electrical, stage
+from pylovo.mv_grid import coincidence, electrical, runtime
 from pylovo.mv_grid.inputs import busbar_record
 from pylovo.mv_grid.model import CASES, CATEGORIES, GridOutcome
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, check_stage_version
@@ -869,14 +869,15 @@ class CouplingSummary:
         return asdict(self)
 
 
-# The driver helpers of the stage; the coupling has its own name for the database client, which tests replace.
-_config, _logger, _close_logger, _one_line = stage._config, stage._logger, stage._close_logger, stage._one_line
-_database_client = stage._database_client
+# The shared helpers of the stage; the coupling has its own name for the database client, which tests replace.
+_config, _logger, _close_logger, _one_line = (runtime.config, runtime.create_logger, runtime.close_logger,
+                                              runtime.one_line)
+_database_client = runtime.database_client
 
 
 def _worker_count(jobs: int, n_grids: int) -> int:
-    """``min(jobs, n_grids)`` capped by the free memory at :data:`WORKER_GB` per worker (``stage.worker_count``)."""
-    return stage.worker_count(max(int(jobs), 1), n_grids, per_worker_gb=WORKER_GB)
+    """``min(jobs, n_grids)`` capped by the free memory at :data:`WORKER_GB` per worker (``runtime.worker_count``)."""
+    return runtime.worker_count(max(int(jobs), 1), n_grids, per_worker_gb=WORKER_GB)
 
 
 def _plain_frame(frame: Any) -> pd.DataFrame:

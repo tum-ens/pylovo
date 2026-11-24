@@ -22,7 +22,7 @@ algorithms are reimplemented from the publications and textbooks listed in :ref:
 Method at a glance
 ------------------
 
-For one MV variant of an LV version, :func:`~pylovo.mv_grid.stage.run_mv_stage` runs these steps:
+For one MV variant of an LV version, :func:`~pylovo.mv_grid.generator.run_mv_stage` runs these steps:
 
 #. Read the LV results of the requested postcodes: one node per LV grid with its load statistics,
    the MV customers and the stored LV voltage requirement of every station.

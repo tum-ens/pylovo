@@ -87,7 +87,7 @@ stage carry ``mv`` in their name (``mv_result_mixin.py``, ``mv_validation.py``, 
        resolution.
    * - :mod:`pylovo.mv_grid`
      - The MV stage (:doc:`mv_grids`): parameters (:mod:`~pylovo.mv_grid.options`,
-       :mod:`~pylovo.mv_grid.parameters`), the stage driver :func:`~pylovo.mv_grid.stage.run_mv_stage`
+       :mod:`~pylovo.mv_grid.parameters`), the run control :func:`~pylovo.mv_grid.generator.run_mv_stage`
        and the pure planning modules (substations, supply areas, routing graph, rings, solvers,
        topology, electrical checks, ties, coupling, metrics). The planner
        :func:`~pylovo.mv_grid.planner.plan_district` runs without a database.
@@ -174,7 +174,7 @@ Control flow of ``pylovo-generate``
 #. ``save_tables`` copies buildings and streets to the result tables, the transaction is committed,
    the optional analysis runs and the temporary tables are dropped.
 #. With ``--mv`` (or ``MV_GRID_GENERATION``), :mod:`pylovo.cli.generate` finally calls
-   :func:`~pylovo.mv_grid.stage.run_mv_stage` for the postcodes of the call. The stage plans every
+   :func:`~pylovo.mv_grid.generator.run_mv_stage` for the postcodes of the call. The stage plans every
    supply area in its own worker process with its own database connection (:doc:`mv_grids`).
 
 Conventions

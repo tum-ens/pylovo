@@ -251,12 +251,12 @@ The main process logs to ``log/log.txt`` in the working directory, each worker t
 From Python
 ~~~~~~~~~~~
 
-The command-line tools call :func:`pylovo.mv_grid.stage.run_mv_stage`:
+The command-line tools call :func:`pylovo.mv_grid.generator.run_mv_stage`:
 
 .. code-block:: python
 
    from pylovo.mv_grid.parameters import MvParameters
-   from pylovo.mv_grid.stage import run_mv_stage
+   from pylovo.mv_grid.generator import run_mv_stage
 
    params = MvParameters.from_config().replace(variant_id="r15", comment="15 ring members")
    params = params.replace_raw({"MV_MAX_STATIONS_PER_RING": 15})

@@ -8,7 +8,7 @@
 
 ``ANALYZE_GRIDS`` in ``config_generation_lv.yaml`` controls whether the basic analysis runs after generation.
 
-With ``MV_GRID_GENERATION: True`` (or ``--mv``) the MV stage (:func:`pylovo.mv_grid.stage.run_mv_stage`)
+With ``MV_GRID_GENERATION: True`` (or ``--mv``) the MV stage (:func:`pylovo.mv_grid.generator.run_mv_stage`)
 runs once after all PLZ of the call, for the configured MV variant of ``VERSION_ID``. The LV grids are
 committed per PLZ first, so an MV failure never undoes them; an MV stage that does not end ``done`` exits
 with code 1. The MV stage runs for the PLZ that have LV grids. The MV modules are imported only when the stage runs.
@@ -139,7 +139,7 @@ def run_mv_stage_after_lv(plz_list: list[int], parallel: bool, params: "MvParame
         Exception: Any error of the MV stage, after printing it.
     """
     try:
-        from pylovo.mv_grid.stage import run_mv_stage   # lazy: no MV import cost for LV-only runs
+        from pylovo.mv_grid.generator import run_mv_stage   # lazy: no MV import cost for LV-only runs
 
         summary = run_mv_stage(VERSION_ID, plz_list, params, parallel=parallel, jobs=min(4, N_JOBS))
         print(summary.describe())

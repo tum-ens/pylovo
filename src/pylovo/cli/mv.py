@@ -2,7 +2,7 @@
 
 Subcommands:
 
-- ``generate``: run the MV stage for one MV variant of an LV version (:func:`pylovo.mv_grid.stage.run_mv_stage`).
+- ``generate``: run the MV stage for one MV variant of an LV version (:func:`pylovo.mv_grid.generator.run_mv_stage`).
 - ``couple``: LV design-point check and merged MV+LV power flows of a done variant.
 - ``delete``: delete MV variants of a version.
 - ``list``: list the MV variants (status, PLZ, grids, km, stale, the MV stage version of an older variant).
@@ -180,14 +180,14 @@ def _parameters(args: argparse.Namespace):
 
 def _generate(args: argparse.Namespace) -> int:
     from pylovo.config_loader import N_JOBS, PARALLEL
-    from pylovo.mv_grid import stage
+    from pylovo.mv_grid import generator, runtime
 
     params = _parameters(args)
     plz_list = _plz_of(args)
     parallel = PARALLEL if args.parallel is None else args.parallel
-    jobs = args.jobs if args.jobs is not None else min(stage.DEFAULT_MAX_JOBS, N_JOBS)
-    summary = stage.run_mv_stage(args.version, plz_list, params, parallel=parallel, jobs=jobs, replace=args.replace,
-                                 osm_coverage=args.osm_coverage)
+    jobs = args.jobs if args.jobs is not None else min(runtime.DEFAULT_MAX_JOBS, N_JOBS)
+    summary = generator.run_mv_stage(args.version, plz_list, params, parallel=parallel, jobs=jobs,
+                                     replace=args.replace, osm_coverage=args.osm_coverage)
     print(summary.describe())
     return 0 if summary.status == "done" else 1
 
@@ -288,9 +288,9 @@ def _export(args: argparse.Namespace) -> int:
 
         path = coupling.export_coupled_net(args.version, args.variant, args.grid, args.output, case=args.case)
     else:
-        from pylovo.mv_grid import stage
+        from pylovo.mv_grid import export
 
-        path = stage.export_net(args.version, args.variant, args.grid, args.output, case=args.case)
+        path = export.export_net(args.version, args.variant, args.grid, args.output, case=args.case)
     print(f"✓ Wrote MV grid {args.grid} ({args.case}) to {path}")
     return 0
 
@@ -314,13 +314,13 @@ def _boundary(args: argparse.Namespace) -> int:
 def _display(args: argparse.Namespace) -> int:
     import logging
 
-    from pylovo.mv_grid import stage
+    from pylovo.mv_grid import post_steps
 
     failed = 0
     with _database_client() as dbc:
         dbc.ensure_grid_persistence_schema()
         for variant in args.variants:
-            stored = stage.display_geometry(dbc, args.version, variant, logging.getLogger(__name__))
+            stored = post_steps.display_geometry(dbc, args.version, variant, logging.getLogger(__name__))
             if stored is None or not any(stored):
                 print(f"✗ MV variant {variant} of version {args.version}: no display geometry (no lines, or an error)")
                 failed += 1

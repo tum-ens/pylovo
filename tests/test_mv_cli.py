@@ -12,7 +12,7 @@ import pytest
 from pylovo.lv_grid import generator as lv_generator
 from pylovo.cli import generate
 from pylovo.cli import mv as cli
-from pylovo.mv_grid import stage
+from pylovo.mv_grid import export, generator, post_steps, runtime
 from pylovo.mv_grid.model import MvRunSummary
 from pylovo.mv_grid.options import MV_STAGE_VERSION
 from pylovo.infdb.source_reader import SourceReader, source_is_remote
@@ -138,7 +138,7 @@ def test_generate_runs_the_stage_with_the_variant(monkeypatch, capsys, no_grid_g
         calls.append((version_id, plz_list, params, kwargs))
         return summary("done")
 
-    monkeypatch.setattr(stage, "run_mv_stage", fake_run)
+    monkeypatch.setattr(generator, "run_mv_stage", fake_run)
     cli.main(["generate", "--version", "mv1", "--plz", "80803", "80802", "80803", "--variant", "d0",
               "--comment", "cable rings", "--set", "MV_MAX_STATIONS_PER_RING=15", "MV_LINE_PLANNING_UTILIZATION=0.5",
               "--no-parallel",
@@ -157,7 +157,7 @@ def test_generate_runs_the_stage_with_the_variant(monkeypatch, capsys, no_grid_g
         cli.build_parser().parse_args(["generate", "--version", "mv1", "--all", "--osm-coverage", "--no-osm-coverage"])
     capsys.readouterr()
 
-    monkeypatch.setattr(stage, "run_mv_stage", lambda *a, **k: summary("partial"))
+    monkeypatch.setattr(generator, "run_mv_stage", lambda *a, **k: summary("partial"))
     with pytest.raises(SystemExit) as exc:
         cli.main(["generate", "--version", "mv1", "--all"])
     assert exc.value.code == 1
@@ -169,7 +169,7 @@ def test_generate_errors_exit_with_a_cross(monkeypatch, capsys, no_grid_generato
     def busy(*args, **kwargs):
         raise MvStageError("another MV run of variant 1 of version mv1 is active")
 
-    monkeypatch.setattr(stage, "run_mv_stage", busy)
+    monkeypatch.setattr(generator, "run_mv_stage", busy)
     with pytest.raises(SystemExit) as exc:
         cli.main(["generate", "--version", "mv1", "--all"])
     assert exc.value.code == 1
@@ -312,7 +312,7 @@ def test_boundary_writes_one_row_per_substation(monkeypatch, capsys, tmp_path, n
 
 def test_export_delegates_to_the_stage(monkeypatch, capsys, tmp_path):
     calls = []
-    monkeypatch.setattr(stage, "export_net", lambda *a, **k: calls.append((a, k)) or Path(a[3]))
+    monkeypatch.setattr(export, "export_net", lambda *a, **k: calls.append((a, k)) or Path(a[3]))
     cli.main(["export", "--version", "mv1", "--variant", "d1", "--grid", "3", "--output",
               str(tmp_path / "g.json"), "--case", "n1a"])
     assert calls == [(("mv1", "d1", 3, tmp_path / "g.json"), {"case": "n1a"})]
@@ -344,12 +344,12 @@ def test_generate_hook_runs_only_with_mv(monkeypatch, capsys, config_params, sou
 def test_generate_hook_runs_the_configured_variant(monkeypatch, capsys, config_params):
     calls = []
     params = MvParameters()
-    monkeypatch.setattr(stage, "run_mv_stage", lambda *a, **k: calls.append((a, k)) or summary("done"))
+    monkeypatch.setattr(generator, "run_mv_stage", lambda *a, **k: calls.append((a, k)) or summary("done"))
     generate.run_mv_stage_after_lv([80803], True, params)
     (args, kwargs), = calls
     assert args[0] == generate.VERSION_ID and args[1] == [80803] and args[2] is params
     assert kwargs == {"parallel": True, "jobs": min(4, generate.N_JOBS)}
-    monkeypatch.setattr(stage, "run_mv_stage", lambda *a, **k: summary("failed"))
+    monkeypatch.setattr(generator, "run_mv_stage", lambda *a, **k: summary("failed"))
     with pytest.raises(SystemExit) as exc:
         generate.run_mv_stage_after_lv([80803], True, params)
     assert exc.value.code == 1
@@ -357,7 +357,7 @@ def test_generate_hook_runs_the_configured_variant(monkeypatch, capsys, config_p
     def broken(*a, **k):
         raise RuntimeError("no substations")
 
-    monkeypatch.setattr(stage, "run_mv_stage", broken)
+    monkeypatch.setattr(generator, "run_mv_stage", broken)
     with pytest.raises(RuntimeError):
         generate.run_mv_stage_after_lv([80803], True, params)
     assert "MV stage failed: no substations" in capsys.readouterr().out
@@ -390,16 +390,18 @@ def test_lv_only_runs_do_not_import_the_mv_stage():
         "generate.MV_GRID_GENERATION = False\n"
         "generate.main(['--plz', '1', '2', '--no-mv'])\n"
         "generate.main(['--plz', '1', '2'])\n"
-        "print('LOADED', [m for m in ('pylovo.mv_grid.stage', 'pylovo.mv_grid.planner', 'pylovo.mv_grid.topology',"
-        " 'pylovo.mv_grid.electrical', 'pylovo.mv_grid.solvers') if m in sys.modules])\n")
+        "print('LOADED', [m for m in ('pylovo.mv_grid.generator', 'pylovo.mv_grid.preparation',"
+        " 'pylovo.mv_grid.district_input', 'pylovo.mv_grid.post_steps', 'pylovo.mv_grid.planner',"
+        " 'pylovo.mv_grid.topology', 'pylovo.mv_grid.electrical', 'pylovo.mv_grid.solvers') if m in sys.modules])\n")
     result = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True, timeout=300)
     assert result.returncode == 0, result.stderr[-2000:]
     assert "LOADED []" in result.stdout
 
 
 def test_mv_cli_never_constructs_a_grid_generator():
-    source = Path(cli.__file__).read_text(encoding="utf-8") + Path(stage.__file__).read_text(encoding="utf-8")
-    assert "GridGenerator(" not in source and "lv_grid.generator" not in source and "import generator" not in source
+    source = Path(cli.__file__).read_text(encoding="utf-8") + Path(generator.__file__).read_text(encoding="utf-8")
+    # the MV run control is pylovo.mv_grid.generator; nothing of the LV package is imported
+    assert "GridGenerator(" not in source and not re.search(r"^\s*(?:from|import)\s+pylovo\.lv_grid", source, re.M)
     assert not re.search(r"config_loader import[^\n]*\bVERSION_ID\b", source) and ".VERSION_ID" not in source
 
 
@@ -423,7 +425,7 @@ def test_every_command_on_the_mv_tables_stops_with_pending_migrations(monkeypatc
     client = FakeClient(ensure_grid_persistence_schema=gate, delete_variants=refuse, list_variants=refuse,
                         generated_plz=refuse, hv_boundary=refuse)
     monkeypatch.setattr(cli, "_database_client", lambda: client)
-    monkeypatch.setattr(stage, "_database_client", lambda log_file: client)
+    monkeypatch.setattr(runtime, "database_client", lambda log_file: client)
     monkeypatch.setattr(config_loader, "USE_EXTERNAL_BASEDATA", False)
     for argv in (["delete", "--version", "mv1", "--variant", "d0", "--yes"], ["list"], ["graph", "--version", "mv1", "--all"],
                  ["boundary", "--version", "mv1", "--variant", "d1", "--output", "b.csv"],
@@ -438,7 +440,7 @@ def test_display_stores_the_display_geometry_of_each_variant(monkeypatch, capsys
     client = FakeClient(ensure_grid_persistence_schema=lambda: checked.append(True))
     monkeypatch.setattr(cli, "_database_client", lambda: client)
     stored = {"d1": (12, 2), "d2": None, "d3": (0, 1), "d4": (0, 0)}       # d3: no shared route, d4: no lines
-    monkeypatch.setattr(stage, "display_geometry", lambda dbc, v, var, logger: stored[var])
+    monkeypatch.setattr(post_steps, "display_geometry", lambda dbc, v, var, logger: stored[var])
     with pytest.raises(SystemExit) as exc:
         cli.main(["display", "--version", "mv1", "--variant", "d1", "d2", "d3", "d4"])
     assert exc.value.code == 1 and checked == [True]
@@ -467,10 +469,10 @@ def test_missing_source_tables_stop_the_mv_stage_before_any_grid(monkeypatch, ca
     with pytest.raises(SystemExit):
         cli.main(["graph", "--version", "v1", "--plz", "80803"])
     assert capsys.readouterr().out.startswith("✗ the MV stage needs basedata.ways_per_junction")
-    monkeypatch.setattr(stage, "_database_client", lambda log_file: clients.append(_SourceClient(missing))
+    monkeypatch.setattr(runtime, "database_client", lambda log_file: clients.append(_SourceClient(missing))
                         or clients[-1])
     with pytest.raises(MvStageError, match="central_infdb"):
-        stage.run_mv_stage("v1", [80803], MvParameters())
+        generator.run_mv_stage("v1", [80803], MvParameters())
     assert all(c.closed for c in clients)
 
 

@@ -237,7 +237,7 @@ def test_the_mv_variant_with_small_rings_has_ties_links_and_coupled_districts(q)
 def test_a_stored_mv_net_is_exported_and_solves_again(q, tmp_path, case):
     import pandapower as pp
 
-    from pylovo.mv_grid.stage import export_net
+    from pylovo.mv_grid.export import export_net
 
     [(grid,)] = q("SELECT min(mv_grid_id) FROM pylovo.mv_grid WHERE version_id = '1' AND mv_variant_id = 'rings'")
     net = pp.from_json(str(export_net("1", "rings", grid, tmp_path / f"{case}.json", case=case)))

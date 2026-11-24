@@ -1021,7 +1021,7 @@ def plan_and_save_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str
     pairs = close_pairs(cand, grids, float(params.tie_max_length_m) + PREFILTER_SLACK_M)
     ties = empty_ties()
     if len(pairs):
-        from pylovo.mv_grid.stage import attachment_points
+        from pylovo.mv_grid.district_input import attachment_points
 
         sub = cand.iloc[np.unique(pairs)]
         must = sorted({int(e) for e in pd.to_numeric(sub["attach_edge_id"], errors="coerce").dropna()})
@@ -1081,7 +1081,7 @@ def plan_and_save_links(dbc: Any, version_id: str, variant_id: str, graph_id: st
         note = f", {len(stub_ends)} stub ends with {len(stub_pairs)} pairs to another feeder"
     links = empty_ties()
     if rows:
-        from pylovo.mv_grid.stage import attachment_points
+        from pylovo.mv_grid.district_input import attachment_points
 
         sub = pd.concat(rows) if len(rows) > 1 else rows[0]
         sub = sub[~sub.index.duplicated()]

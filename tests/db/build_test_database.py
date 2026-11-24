@@ -95,7 +95,7 @@ def _mv_rings_variant_command() -> list[str]:
     """The Python command that plans :data:`MV_RINGS_VARIANT` as ``pylovo-mv generate --no-parallel`` does."""
     variant_id, changes = MV_RINGS_VARIANT
     return [sys.executable, "-c",
-            "from pylovo.mv_grid.parameters import MvParameters; from pylovo.mv_grid.stage import run_mv_stage; "
+            "from pylovo.mv_grid.parameters import MvParameters; from pylovo.mv_grid.generator import run_mv_stage; "
             f"params = MvParameters.from_config().replace(variant_id={variant_id!r}, **{changes!r}); "
             f"summary = run_mv_stage({MV_VERSION!r}, {toy_town.GENERATED_PLZ!r}, params, parallel=False); "
             "raise SystemExit(summary.status != 'done')"]

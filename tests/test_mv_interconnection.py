@@ -17,7 +17,7 @@ import shapely
 
 import pylovo.database.mv_result_mixin as mixin
 from pylovo.mv_grid import interconnection as ic
-from pylovo.mv_grid import metrics, stage
+from pylovo.mv_grid import generator, metrics, preparation, runtime
 from pylovo.mv_grid.model import EdgeSet, links_line
 from pylovo.mv_grid.parameters import MvParameters
 
@@ -773,15 +773,15 @@ def test_the_stage_stores_the_tie_summary(monkeypatch, tmp_path):
         seen.append((version_id, variant_id, graph_id))
         return {"n_ties": 3, "tie_km": 2.5, "tie_max_length_m": 2000.0}
 
-    monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
-    monkeypatch.setattr(stage, "LvVersionParameters", LvStub)              # no LV snapshot rules in this test
-    monkeypatch.setattr(stage, "_region_step", lambda *a, **k: {})
-    monkeypatch.setattr(stage, "_run_districts", lambda *a, **k: [])
+    monkeypatch.setattr(runtime, "database_client", lambda log_file: db)
+    monkeypatch.setattr(generator, "LvVersionParameters", LvStub)              # no LV snapshot rules in this test
+    monkeypatch.setattr(preparation, "region_step", lambda *a, **k: {})
+    monkeypatch.setattr(generator, "_run_districts", lambda *a, **k: [])
     monkeypatch.setattr(ic, "plan_and_save_ties", fake_ties)
     monkeypatch.setattr(ic, "plan_and_save_links", lambda dbc, version_id, variant_id, graph_id, params, logger=None: {
         "n_links": 4, "link_km": 1.2, "n_rings": 6, "n_rings_with_link": 4, "node_share_with_link": 0.1,
         "n_ring_pairs_closed": 1, "link_max_length_m": 500.0})
-    summary = stage.run_mv_stage("mv1", [1], PARAMS, log_file=str(tmp_path / "log.txt"))
+    summary = generator.run_mv_stage("mv1", [1], PARAMS, log_file=str(tmp_path / "log.txt"))
     assert seen == [("mv1", "y0", "g1")] and summary.status == "done"
     assert summary.to_dict()["links"]["n_links"] == 4
     assert ("✓ Links: 4 normally-open links between rings, 1.2 km, 4 of 6 rings, 10 % of the supply points with a "

@@ -86,7 +86,7 @@ and constant names). Both check the values like the configuration:
 .. code-block:: python
 
    from pylovo.mv_grid.parameters import MvParameters
-   from pylovo.mv_grid.stage import run_mv_stage
+   from pylovo.mv_grid.generator import run_mv_stage
 
    params = MvParameters.from_config().replace(variant_id="ls0", comment="no local search",
                                                local_search_rounds=0)
