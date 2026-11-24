@@ -20,7 +20,7 @@ import pytest
 
 from pylovo import version_snapshot
 from pylovo.mv_grid import options
-from pylovo.mv_grid.model import CATEGORIES, HvMvType, LineType, MvRunSummary
+from pylovo.mv_grid.model import CATEGORIES, HvMvType, LineType, MvRunSummary, finite_or_none
 from pylovo.mv_grid.options import (
     CONSTANTS,
     MV_STAGE_VERSION,
@@ -716,3 +716,8 @@ def test_run_summary_dict_is_json_native():
     data = summary(n_stations=np.int64(5), circuit_km=np.float64(1.5), plz_used=np.array([1, 2])).to_dict()
     assert json_round_trip(data) == data
     assert data["n_stations"] == 5 and type(data["n_stations"]) is int and data["plz_used"] == [1, 2]
+
+
+def test_finite_or_none_turns_missing_non_numeric_and_non_finite_values_into_none():
+    assert finite_or_none(1) == 1.0 and finite_or_none(np.float32(2.5)) == 2.5 and finite_or_none("3") == 3.0
+    assert [finite_or_none(v) for v in (None, float("nan"), float("inf"), -np.inf, "n/a", object())] == [None] * 6

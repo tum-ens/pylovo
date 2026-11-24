@@ -50,7 +50,7 @@ from pylovo.electrical_backend.core.specs import MIN_LINE_KM
 from pylovo import station_transformers
 from pylovo.mv_grid import coincidence, electrical, runtime
 from pylovo.mv_grid.inputs import busbar_record
-from pylovo.mv_grid.model import CASES, CATEGORIES, GridOutcome
+from pylovo.mv_grid.model import CASES, CATEGORIES, GridOutcome, finite_or_none
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, check_stage_version
 
 logger = logging.getLogger(__name__)
@@ -83,17 +83,8 @@ BUSBAR_CUSTOMER_COLUMN: str = "busbar_customer"
 
 
 # ---------------------------------------------------------------------------------------------- small helpers
-def _finite(value: Any) -> float | None:
-    """``value`` as a float, or None if it is missing or not finite (JSON-native metrics)."""
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if math.isfinite(number) else None
-
-
 def _number(value: Any, default: float = math.nan) -> float:
-    number = _finite(value)
+    number = finite_or_none(value)
     return default if number is None else number
 
 
@@ -165,7 +156,7 @@ def upsized_ratings(stations: pd.DataFrame) -> dict[int, float]:
         return {}
     out: dict[int, float] = {}
     for gid, stats in zip(pd.to_numeric(stations["grid_result_id"], errors="coerce"), stations["load_stats"]):
-        rating = _finite(busbar_record(stats).get("upsized_sn_kva"))
+        rating = finite_or_none(busbar_record(stats).get("upsized_sn_kva"))
         if rating is not None and rating > 0 and pd.notna(gid):
             out[int(gid)] = rating
     return out
@@ -625,7 +616,7 @@ def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters) -> pd.DataFra
     current = electrical.case_net(net, "load", params, busbar_vm_pu=operating_busbar_vm(params))
     converged = electrical.run_power_flow(current)
     if converged:
-        slack = _finite(current.res_ext_grid["p_mw"].sum())
+        slack = finite_or_none(current.res_ext_grid["p_mw"].sum())
         vm = current.res_bus["vm_pu"]
         busbar_vm = pd.Series(vm.reindex(stations["lv_bus"].to_numpy()).to_numpy(), index=stations.index)
         lv_vm = vm[lv_rows]
@@ -686,8 +677,9 @@ def _diff_stats(coupled: pd.Series, analytic: pd.Series) -> dict:
     diff = (coupled[both] - analytic[both]).astype(float)
     if not len(diff):
         return {"n": 0, "max_abs_diff_pu": None, "mean_diff_pu": None, "share_within": None}
-    return {"n": int(len(diff)), "max_abs_diff_pu": _finite(diff.abs().max()), "mean_diff_pu": _finite(diff.mean()),
-            "share_within": _finite((diff.abs() < AGREEMENT_PU).mean())}
+    return {"n": int(len(diff)), "max_abs_diff_pu": finite_or_none(diff.abs().max()),
+            "mean_diff_pu": finite_or_none(diff.mean()),
+            "share_within": finite_or_none((diff.abs() < AGREEMENT_PU).mean())}
 
 
 def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
@@ -785,7 +777,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         "design_point": {
             "busbar": _diff_stats(rows["coupled_lv_busbar_vm_pu"], table["lv_busbar_vm_pu"]),
             "minimum": _diff_stats(rows["coupled_lv_min_vm_pu"], table["lv_min_vm_pu"]),
-            "min_lv_vm_pu": _finite(rows["coupled_lv_min_vm_pu"].min()),
+            "min_lv_vm_pu": finite_or_none(rows["coupled_lv_min_vm_pu"].min()),
         },
         "agreement_pu": AGREEMENT_PU,
     }
@@ -812,15 +804,15 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
             common = mv_vm.index.intersection(ref_vm.index)
             diff = (mv_vm.loc[common] - ref_vm.loc[common]).dropna()
             if len(diff):
-                mv_diff = {"n": int(len(diff)), "max_abs_diff_pu": _finite(diff.abs().max()),
-                           "mean_diff_pu": _finite(diff.mean())}
+                mv_diff = {"n": int(len(diff)), "max_abs_diff_pu": finite_or_none(diff.abs().max()),
+                           "mean_diff_pu": finite_or_none(diff.mean())}
         converged = op.attrs.get("converged", {})
         metrics["operating_point"] = {
             "converged": {case: bool(ok) for case, ok in converged.items()},
             "slack_p_mw": op.attrs.get("slack_p_mw", {}),
-            "mv_only_slack_p_mw": _finite(reference.res_ext_grid["p_mw"].sum()) if ref_ok else None,
+            "mv_only_slack_p_mw": finite_or_none(reference.res_ext_grid["p_mw"].sum()) if ref_ok else None,
             "mv_vm_vs_mv_only": mv_diff,
-            "min_lv_vm_pu": _finite(op["op_lv_min_vm_pu"].min()),
+            "min_lv_vm_pu": finite_or_none(op["op_lv_min_vm_pu"].min()),
             "busbar_vs_design_point": _diff_stats(rows["coupled_op_lv_busbar_vm_pu"],
                                                   rows["coupled_lv_busbar_vm_pu"]),
             "n_buses": int(len(net.bus)), "n_lines": int(len(net.line)),

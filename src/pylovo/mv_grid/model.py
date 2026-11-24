@@ -9,6 +9,7 @@ unless a name says otherwise, voltages in p.u.; geometries are shapely objects i
 """
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol, Sequence
 
@@ -356,6 +357,15 @@ class GridOutcome:
     status: str                            # done | failed
     error: str | None
     runtime_s: float
+
+
+def finite_or_none(value: Any) -> float | None:
+    """``value`` as a float, or None if it is missing, not a number or not finite (JSON-native figures)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 def _plain(value: Any) -> Any:

@@ -54,6 +54,7 @@ from pylovo.mv_grid.model import (
     StationBudget,
     TopologyPlan,
     Violation,
+    finite_or_none,
 )
 
 logger = logging.getLogger(__name__)
@@ -647,10 +648,6 @@ def power_flow_status(cases: Mapping[str, CaseResult], violations: Sequence[Viol
     return "converged"
 
 
-def _finite(value: float) -> float | None:
-    return None if value is None or not math.isfinite(float(value)) else float(value)
-
-
 def case_metrics(cases: Mapping[str, CaseResult]) -> dict:
     """Extremes per case and the district maxima of ``pylovo.mv_grid`` (JSON-native, None for missing values).
 
@@ -669,11 +666,11 @@ def case_metrics(cases: Mapping[str, CaseResult]) -> dict:
         load_values = result.loading_percent.to_numpy(dtype=float)
         load_finite = load_values[np.isfinite(load_values)]
         out[f"{case}_converged"] = bool(result.converged)
-        out[f"{case}_min_vm_pu"] = _finite(finite.min()) if len(finite) else None
-        out[f"{case}_max_vm_pu"] = _finite(finite.max()) if len(finite) else None
-        out[f"{case}_max_loading_percent"] = _finite(load_finite.max()) if len(load_finite) else None
-        out[f"{case}_slack_p_mw"] = _finite(result.slack_p_mw)
-        out[f"{case}_slack_q_mvar"] = _finite(result.slack_q_mvar)
+        out[f"{case}_min_vm_pu"] = finite_or_none(finite.min()) if len(finite) else None
+        out[f"{case}_max_vm_pu"] = finite_or_none(finite.max()) if len(finite) else None
+        out[f"{case}_max_loading_percent"] = finite_or_none(load_finite.max()) if len(load_finite) else None
+        out[f"{case}_slack_p_mw"] = finite_or_none(result.slack_p_mw)
+        out[f"{case}_slack_q_mvar"] = finite_or_none(result.slack_q_mvar)
         out[f"{case}_unsupplied_nodes"] = int((~np.isfinite(values)).sum()) if result.converged else None
         if result.converged and len(finite) and np.isfinite(values[0]):
             drop[case] = 100.0 * (values[0] - finite.min())
@@ -682,7 +679,7 @@ def case_metrics(cases: Mapping[str, CaseResult]) -> dict:
 
     def _max(names: Iterable[str], source: Mapping[str, float]) -> float | None:
         found = [source[name] for name in names if name in source]
-        return _finite(max(found)) if found else None
+        return finite_or_none(max(found)) if found else None
 
     out["max_voltage_drop_percent"] = _max(["load"], drop)
     out["max_voltage_drop_n1_percent"] = _max(N1_CASES, drop)

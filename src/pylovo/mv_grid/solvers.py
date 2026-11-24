@@ -29,7 +29,7 @@ from typing import Callable, Iterator, Sequence
 
 import numpy as np
 
-from pylovo.mv_grid.model import RingEvaluatorProtocol, SolverResult
+from pylovo.mv_grid.model import RingEvaluatorProtocol, SolverResult, finite_or_none
 
 #: Terminal index of the busbar in every distance matrix.
 BUSBAR = 0
@@ -94,8 +94,8 @@ def solve(ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: Sequence[in
         "solver_candidates": len(nodes),
         "solver_rings": len(routes),
         "solver_infeasible_rings": infeasible,
-        "solver_length_construction_m": _finite_or_none(length_construction),
-        "solver_length_final_m": _finite_or_none(length_final),
+        "solver_length_construction_m": finite_or_none(length_construction),
+        "solver_length_final_m": finite_or_none(length_final),
         "solver_gain_percent": gain,
         "solver_passes": ls["passes"],
         "solver_moves": ls["moves"],
@@ -225,10 +225,6 @@ def _route_length(D: list[list[float]], route: Sequence[int]) -> float:
 
 def _routes_length(D: list[list[float]], routes: Routes) -> float:
     return math.fsum(_route_length(D, r) for r in routes)
-
-
-def _finite_or_none(value: float) -> float | None:
-    return float(value) if math.isfinite(value) else None
 
 
 class _Feasibility:
