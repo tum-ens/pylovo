@@ -16,11 +16,11 @@ from pylovo.config_loader import (
     VERSION_ID,
 )
 from pylovo.electrical_backend import IElectricalBackend
-from pylovo.lv_grid.context import Stage
+from pylovo.lv_grid.context import Step
 from pylovo.station_voltage import validate_operating_point
 
 
-class GridStorage(Stage):
+class GridStorage(Step):
     """Validate a built grid (:meth:`validate_net`) and store it (:meth:`save_net`)."""
 
     def validate_net(self, backend: IElectricalBackend, kcid, bcid) -> tuple[str, dict[str, float | None]]:

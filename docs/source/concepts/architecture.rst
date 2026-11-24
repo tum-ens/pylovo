@@ -41,7 +41,7 @@ stage carry ``mv`` in their name (``mv_result_mixin.py``, ``mv_validation.py``, 
      - Comparison of the stored generation-parameter snapshot of a version with the current
        configuration (:ref:`versions`).
    * - :mod:`pylovo.lv_grid`
-     - The LV grid generation. Its stages for one postcode are one class each: input preparation,
+     - The LV grid generation. Its steps for one postcode are one class each: input preparation,
        street clustering, supply areas and stations, the electrical network of every grid, the
        voltage repair and the validation and storage of a grid.
    * - :mod:`pylovo.lv_grid.generator`
@@ -165,7 +165,7 @@ Control flow of ``pylovo-generate``
 #. For several postcodes, ``generate_grid_for_multiple_plz`` starts worker processes; each creates
    its own ``GridGenerator`` and database connections.
 #. ``generate_grid_for_single_plz`` creates the temporary tables of the postcode and runs
-   ``generate_grid``, which runs the stages of :mod:`pylovo.lv_grid`: ``InputPreparation``,
+   ``generate_grid``, which runs the steps of :mod:`pylovo.lv_grid`: ``InputPreparation``,
    ``StreetClustering``, ``StationPlanner`` and ``NetworkBuilder`` (:doc:`pipeline`).
 #. ``NetworkBuilder`` builds every grid in a fresh electrical backend: the ``CableInstaller``
    creates buses, transformer and loads, :mod:`pylovo.lv_grid.feeder_planning` plans and sizes the feeder

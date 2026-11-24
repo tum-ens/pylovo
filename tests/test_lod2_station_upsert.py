@@ -29,10 +29,10 @@ def prepared_steps(monkeypatch, open_positions, manual_positions):
     monkeypatch.setattr(preparation, "USE_MANUAL_TRANSFORMER_POSITIONS", manual_positions)
     calls = []
     recorder = Recorder(calls)
-    stage = InputPreparation(GenerationContext(plz=80331, dbc=recorder, logger=LOGGER, inf_dbc=recorder))
+    preparation_step = InputPreparation(GenerationContext(plz=80331, dbc=recorder, logger=LOGGER, inf_dbc=recorder))
     for step in STEPS:
-        setattr(stage, step, lambda step=step: calls.append(step))
-    stage.run()
+        setattr(preparation_step, step, lambda step=step: calls.append(step))
+    preparation_step.run()
     return calls
 
 

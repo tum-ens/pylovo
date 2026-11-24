@@ -1,4 +1,4 @@
-"""Stage 3 of the LV generation: the supply area (``bcid``) and the station of every grid.
+"""Step 3 of the LV generation: the supply area (``bcid``) and the station of every grid.
 
 :class:`StationPlanner` works through the ``kcid`` of a postcode. Existing stations take the buildings around
 them first (brownfield, negative ``bcid``); the remaining buildings are split into greenfield areas
@@ -18,11 +18,11 @@ from pylovo.config_loader import (
     MAX_GREENFIELD_TRAFO_DISTANCE,
     MERGE_GREENFIELD_CLUSTERS,
 )
-from pylovo.lv_grid.context import GenerationContext, Stage
+from pylovo.lv_grid.context import GenerationContext, Step
 from pylovo.lv_grid.greenfield_areas import GreenfieldAreas
 
 
-class StationPlanner(Stage):
+class StationPlanner(Step):
     """Plan the supply areas and stations of all ``kcid`` of the postcode (:meth:`run`)."""
 
     def __init__(self, context: GenerationContext):

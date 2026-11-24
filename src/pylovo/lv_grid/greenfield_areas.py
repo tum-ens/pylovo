@@ -1,4 +1,4 @@
-"""Stage 3 of the LV generation, greenfield part: the supply areas of new stations.
+"""Step 3 of the LV generation, greenfield part: the supply areas of new stations.
 
 :class:`GreenfieldAreas` splits the buildings of a ``kcid`` that no existing station supplies into supply areas
 (``bcid``) that one transformer can supply, and merges neighbouring areas again where the result stays feasible.
@@ -19,10 +19,10 @@ from pylovo.config_loader import (
     MAX_GREENFIELD_TRAFO_DISTANCE,
     MERGE_GREENFIELD_CLUSTERS,
 )
-from pylovo.lv_grid.context import Stage
+from pylovo.lv_grid.context import Step
 
 
-class GreenfieldAreas(Stage):
+class GreenfieldAreas(Step):
     """Split the unassigned buildings of a ``kcid`` into feasible greenfield supply areas (:meth:`split`)."""
 
     def split(self, plz: int, kcid: int, first_bcid: int = 1, merge: bool = True,

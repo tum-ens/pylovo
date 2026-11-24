@@ -49,12 +49,12 @@ def buildings(*rows):
     return pd.DataFrame({"vertice_id": [v for v, _ in rows], "connection_point": [c for _, c in rows]})
 
 
-def repair_stage(dbc=None):
+def repair_step(dbc=None):
     return VoltageRepair(GenerationContext(plz=80803, dbc=dbc, logger=LOGGER))
 
 
 def targets(backend, rows, ont_vertice=5):
-    return repair_stage().targets(backend, buildings(*rows), ont_vertice=ont_vertice)
+    return repair_step().targets(backend, buildings(*rows), ont_vertice=ont_vertice)
 
 
 # --- which consumers move ------------------------------------------------------------------------------------------
@@ -67,7 +67,7 @@ def test_the_far_end_of_a_feeder_moves_when_a_consumer_there_is_below_the_band()
         "Consumer Nodebus 41": 0.85,                                    # no bus at its node (cabinet network)
         "Consumer Nodebus 51": 0.89, "LVbus 1": 0.96,                   # at the station vertex itself
     })
-    far, connections = repair_stage().targets(
+    far, connections = repair_step().targets(
         backend, buildings((11, 1), (21, 2), (22, 6), (31, 3), (41, 4), (51, 5)), ont_vertice=5)
     assert far == [2, 4, 6]
     # below the band because of their own house cables: at a street node within the feeder share (31) and at the
@@ -126,7 +126,7 @@ class ClusterDb:
 
 
 def repaired(monkeypatch, bcid, building_rows, low_points, rated=None, new_bcids=(4,), connections=(), ont=900):
-    stage = repair_stage(ClusterDb(rated))
+    step = repair_step(ClusterDb(rated))
     monkeypatch.setattr(VoltageRepair, "targets",
                         lambda self, backend, df, ont_vertice: (list(low_points), list(connections)))
     dimensioned = []
@@ -140,8 +140,8 @@ def repaired(monkeypatch, bcid, building_rows, low_points, rated=None, new_bcids
                         lambda self, plz, kcid, b: self.dbc.calls.append(("station", b)))
     # 100 kW per connection point
     monkeypatch.setattr(utils, "simultaneous_peak_load", lambda df, categories, nodes: 100.0 * len(nodes))
-    rebuild = stage.repair(2, bcid, None, buildings(*building_rows), ont_vertice=ont)
-    return rebuild, stage.dbc.calls, dimensioned
+    rebuild = step.repair(2, bcid, None, buildings(*building_rows), ont_vertice=ont)
+    return rebuild, step.dbc.calls, dimensioned
 
 
 def test_an_existing_station_keeps_its_other_buildings_and_is_sized_again(monkeypatch):

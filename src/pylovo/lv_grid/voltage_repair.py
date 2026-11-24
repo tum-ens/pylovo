@@ -11,11 +11,11 @@ import pandas as pd  # type: ignore
 from pylovo import utils
 from pylovo.config_loader import MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT, POWER_FLOW_MIN_VM_PU
 from pylovo.electrical_backend import IElectricalBackend
-from pylovo.lv_grid.context import GenerationContext, Stage
+from pylovo.lv_grid.context import GenerationContext, Step
 from pylovo.lv_grid.station_planning import StationPlanner
 
 
-class VoltageRepair(Stage):
+class VoltageRepair(Step):
     """Plan a grid with a voltage violation again (:meth:`repair`)."""
 
     def __init__(self, context: GenerationContext):

@@ -1,4 +1,4 @@
-"""What the stages of the LV generation of one postcode share."""
+"""What the steps of the LV generation of one postcode share."""
 from __future__ import annotations
 
 import logging
@@ -10,7 +10,7 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class GenerationContext:
-    """The postcode being generated and the objects every stage works with.
+    """The postcode being generated and the objects every step works with.
 
     Attributes:
         plz: The postcode area.
@@ -30,10 +30,10 @@ class GenerationContext:
     inf_dbc: Any = None
 
 
-class Stage:
-    """One stage of the LV generation of a postcode.
+class Step:
+    """One step of the LV generation of a postcode.
 
-    A stage is created for one :class:`GenerationContext`; ``plz``, ``dbc``, ``logger``,
+    A step is created for one :class:`GenerationContext`; ``plz``, ``dbc``, ``logger``,
     ``consumer_categories`` and ``inf_dbc`` are the context's.
     """
 

@@ -2416,7 +2416,7 @@ z
      <use xlink:href="#DejaVuSans-6e" transform="translate(848.716797 0)"/>
      <use xlink:href="#DejaVuSans-65" transform="translate(912.095703 0)"/>
     </g>
-    <!-- per postcode, one class per stage -->
+    <!-- per postcode, one class per step -->
     <g style="fill: #52514e" transform="translate(95.76 199.148323) scale(0.073 -0.073)">
      <use xlink:href="#DejaVuSans-70"/>
      <use xlink:href="#DejaVuSans-65" transform="translate(63.476562 0)"/>
@@ -2448,9 +2448,8 @@ z
      <use xlink:href="#DejaVuSans-20" transform="translate(1382.617188 0)"/>
      <use xlink:href="#DejaVuSans-73" transform="translate(1414.404297 0)"/>
      <use xlink:href="#DejaVuSans-74" transform="translate(1466.503906 0)"/>
-     <use xlink:href="#DejaVuSans-61" transform="translate(1505.712891 0)"/>
-     <use xlink:href="#DejaVuSans-67" transform="translate(1566.992188 0)"/>
-     <use xlink:href="#DejaVuSans-65" transform="translate(1630.46875 0)"/>
+     <use xlink:href="#DejaVuSans-65" transform="translate(1505.712891 0)"/>
+     <use xlink:href="#DejaVuSans-70" transform="translate(1567.236328 0)"/>
     </g>
    </g>
    <g id="text_14">

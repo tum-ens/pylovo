@@ -9,7 +9,7 @@ classification is described in :doc:`user_guide/classification`).
 Entry points for most tasks:
 
 * :class:`pylovo.lv_grid.generator.GridGenerator` -- generate grids for one or many postcodes.
-* :mod:`pylovo.lv_grid` -- the stages of the generation of one postcode, one class each.
+* :mod:`pylovo.lv_grid` -- the steps of the generation of one postcode, one class each.
 * :class:`pylovo.database.database_client.DatabaseClient` -- database access, e.g.
   :meth:`~pylovo.database.analysis_mixin.AnalysisMixin.read_net_db`.
 * :class:`pylovo.database.database_constructor.DatabaseConstructor` -- schema setup.

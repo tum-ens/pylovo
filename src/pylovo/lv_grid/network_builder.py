@@ -1,4 +1,4 @@
-"""Stage 4 of the LV generation: the electrical network of every supply area.
+"""Step 4 of the LV generation: the electrical network of every supply area.
 
 :class:`NetworkBuilder` builds, validates and stores one network per grid (``kcid``, ``bcid``) of the postcode:
 buses, the station transformer and the loads, the feeders (:mod:`pylovo.lv_grid.feeder_planning`) and the service cables
@@ -25,7 +25,7 @@ from pylovo.config_loader import (
     MAX_VOLTAGE_REPAIRS,
 )
 from pylovo.electrical_backend import IElectricalBackend, create_backend
-from pylovo.lv_grid.context import GenerationContext, Stage
+from pylovo.lv_grid.context import GenerationContext, Step
 from pylovo.lv_grid.grid_storage import GridStorage
 from pylovo.lv_grid.voltage_repair import VoltageRepair
 
@@ -117,7 +117,7 @@ class BuiltGrid:
     material_length_by_cable_km: dict
 
 
-class NetworkBuilder(Stage):
+class NetworkBuilder(Step):
     """Build the networks of all grids of the postcode (:meth:`run`)."""
 
     def __init__(self, context: GenerationContext):

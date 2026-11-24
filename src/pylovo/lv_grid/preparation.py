@@ -1,4 +1,4 @@
-"""Stage 1 of the LV generation: the inputs of a postcode in its temporary tables.
+"""Step 1 of the LV generation: the inputs of a postcode in its temporary tables.
 
 :class:`InputPreparation` reads the postcode, the buildings and the streets from the InfDB, derives the loads
 and the settlement type, adds the candidate transformers and builds the routable street network.
@@ -23,10 +23,10 @@ from pylovo.config_loader import (
     USE_OPEN_TRANSFORMER_POSITIONS,
 )
 from pylovo.infdb.infdb_client import address_filter_warning
-from pylovo.lv_grid.context import Stage
+from pylovo.lv_grid.context import Step
 
 
-class InputPreparation(Stage):
+class InputPreparation(Step):
     """Fill the temporary tables of the postcode: :meth:`run` calls the ``prepare_*`` steps in order."""
 
     def run(self) -> None:

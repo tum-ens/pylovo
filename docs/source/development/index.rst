@@ -34,7 +34,7 @@ Project layout
    |   |-- infdb/                InfdbClient
    |   |-- data_import/          transformer, DSO, municipal register and building imports
    |   |-- electrical_backend/   backend interface, pandapower and OpenDSS
-   |   |-- lv_grid/              LV grid generation: GridGenerator (run control), one class per stage,
+   |   |-- lv_grid/              LV grid generation: GridGenerator (run control), one class per step,
    |   |                         supply-area rules, feeder planning, CableInstaller
    |   |-- mv_grid/              MV stage on a stored LV version (pylovo-mv)
    |   |-- classification/       grid classification (pylovo-classify)

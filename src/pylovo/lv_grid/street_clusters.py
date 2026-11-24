@@ -1,4 +1,4 @@
-"""Stage 2 of the LV generation: the street network of a postcode in clusters (``kcid``).
+"""Step 2 of the LV generation: the street network of a postcode in clusters (``kcid``).
 
 Every connected component of the street graph that has buildings becomes one ``kcid``; a component with more
 than ``MAX_BUILDINGS_PER_KCID`` buildings is split with k-means first, because the routed distance matrix of a
@@ -12,10 +12,10 @@ import numpy as np
 from sklearn.cluster import KMeans
 
 from pylovo.config_loader import K_MEANS_SEED, MAX_BUILDINGS_PER_KCID
-from pylovo.lv_grid.context import Stage
+from pylovo.lv_grid.context import Step
 
 
-class StreetClustering(Stage):
+class StreetClustering(Step):
     """Give every loaded building of the postcode a ``kcid`` (:meth:`run`)."""
 
     def run(self):

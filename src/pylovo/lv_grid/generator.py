@@ -1,8 +1,8 @@
 """LV grid generation for one or more postcode areas (PLZ).
 
 :class:`GridGenerator` controls a run: it locks the PLZ, creates its temporary tables, runs the
-stages of :mod:`pylovo.lv_grid` (:meth:`GridGenerator.generate_grid`), copies the results into the
-``*_result`` tables and cleans up; for several PLZ it starts worker processes. The stages are
+steps of :mod:`pylovo.lv_grid` (:meth:`GridGenerator.generate_grid`), copies the results into the
+``*_result`` tables and cleans up; for several PLZ it starts worker processes. The steps are
 
 1. :class:`~pylovo.lv_grid.preparation.InputPreparation`: postcode, buildings with loads, candidate
    transformers and the routable street network,
@@ -331,7 +331,7 @@ class GridGenerator:
                 gg.dbc.close()
 
     def context(self) -> GenerationContext:
-        """The context of the postcode being generated, for the stages of :mod:`pylovo.lv_grid`."""
+        """The context of the postcode being generated, for the steps of :mod:`pylovo.lv_grid`."""
         return GenerationContext(plz=self.plz, dbc=self.dbc, logger=self.logger,
                                  consumer_categories=self.consumer_categories, inf_dbc=self.inf_dbc)
 
